@@ -1,5 +1,5 @@
 #define SOLUTION_CYLINDER_AND_PLANE
-//#define SOLUTION_SHADOW
+#define SOLUTION_SHADOW
 //#define SOLUTION_REFLECTION_REFRACTION
 //#define SOLUTION_FRESNEL
 //#define SOLUTION_BOOLEAN
@@ -222,14 +222,15 @@ HitInfo intersectCylinder(const Ray ray, const Cylinder cylinder, const float tM
         
         vec3 hitPosition = ray.origin + smallestTInInterval * ray.direction;
         vec3 footPoint = cylinder.position - (dot(cylinder.direction, cylinder.position - hitPosition) / lengthSquared(cylinder.direction)) * cylinder.direction;
+        float originToCylinder = length(cross(cylinder.direction, cylinder.position - ray.origin)) / length(cylinder.direction);
         
         //Checking if we're inside the sphere by checking if the ray's origin is inside. If we are, then the normal
         //at the intersection surface points towards the center. Otherwise, if we are outside the sphere, then the normal
         //at the intersection surface points outwards from the sphere's center. This is important for refraction.
         vec3 normal =
-        length(hitPosition - footPoint) < cylinder.radius + 0.001?
-        normalize(hitPosition - footPoint):
-        -normalize(hitPosition - footPoint);
+        originToCylinder < cylinder.radius + 0.001?
+        -normalize(hitPosition - footPoint):
+        normalize(hitPosition - footPoint);
         
         //Checking if we're inside the sphere by checking if the ray's origin is inside,
         // but this time for IOR bookkeeping.
@@ -313,6 +314,7 @@ vec3 shadeFromLight(
     float specular_term  = pow(max(0.0, dot(lightDirection, reflectedDirection)), hit_info.material.glossiness);
     
 #ifdef SOLUTION_SHADOW
+    float visibility = 1.0;
 #else
     // Put your shadow test here
     float visibility = 1.0;
