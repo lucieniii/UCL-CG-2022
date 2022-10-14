@@ -315,6 +315,25 @@ vec3 shadeFromLight(
     
 #ifdef SOLUTION_SHADOW
     float visibility = 1.0;
+    float distanceFromlightToRay = length(cross(ray.direction, ray.origin - light.position)) / length(ray.direction);
+    bool lightOnTheRay = false;
+    if (abs(distanceFromlightToRay) < 0.001) {
+        vec3 nd = ray.origin - light.position;
+        if (length(nd) < 0.001) {
+            lightOnTheRay = true;
+        } else {
+            float nt = 0;
+            if (abs(ray.direction.x) > 0. && nd.x / ray.direction.x > 0.) {
+                lightOnTheRay = true;
+            } else if (abs(ray.direction.y) > 0. && nd.y / ray.direction.y > 0.) {
+                lightOnTheRay = true;
+            } else if (abs(ray.direction.z) > 0. && nd.z / ray.direction.z > 0.) {
+                lightOnTheRay = true;
+            }
+        }
+    } 
+    visibility = lightOnTheRay ? 1.0 : 0.0;
+    
 #else
     // Put your shadow test here
     float visibility = 1.0;
