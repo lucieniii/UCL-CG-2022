@@ -1,6 +1,6 @@
 #define SOLUTION_CYLINDER_AND_PLANE
 #define SOLUTION_SHADOW
-//#define SOLUTION_REFLECTION_REFRACTION
+#define SOLUTION_REFLECTION_REFRACTION
 //#define SOLUTION_FRESNEL
 //#define SOLUTION_BOOLEAN
 
@@ -314,25 +314,14 @@ vec3 shadeFromLight(
     float specular_term  = pow(max(0.0, dot(lightDirection, reflectedDirection)), hit_info.material.glossiness);
     
 #ifdef SOLUTION_SHADOW
+
     float visibility = 1.0;
-    float distanceFromlightToRay = length(cross(ray.direction, ray.origin - light.position)) / length(ray.direction);
-    bool lightOnTheRay = false;
-    if (abs(distanceFromlightToRay) < 0.001) {
-        vec3 nd = ray.origin - light.position;
-        if (length(nd) < 0.001) {
-            lightOnTheRay = true;
-        } else {
-            float nt = 0;
-            if (abs(ray.direction.x) > 0. && nd.x / ray.direction.x > 0.) {
-                lightOnTheRay = true;
-            } else if (abs(ray.direction.y) > 0. && nd.y / ray.direction.y > 0.) {
-                lightOnTheRay = true;
-            } else if (abs(ray.direction.z) > 0. && nd.z / ray.direction.z > 0.) {
-                lightOnTheRay = true;
-            }
-        }
-    } 
-    visibility = lightOnTheRay ? 1.0 : 0.0;
+    Ray rayToLight;
+    rayToLight.origin = hit_info.position;
+    rayToLight.direction = lightDirection;
+    float tMin = 0.001, tMax = length(hitToLight) / length(lightDirection);
+    HitInfo testHit = intersectScene(scene, rayToLight, tMin, tMax);
+    visibility = testHit.hit ? 0.0 : 1.0;
     
 #else
     // Put your shadow test here
@@ -405,6 +394,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         if(!currentHitInfo.hit) break;
         
 #ifdef SOLUTION_REFLECTION_REFRACTION
+		reflectionWeight *= currentHitInfo.material.reflection;
 #else
         // Put your reflection weighting code in the ifdef above
 #endif
@@ -417,6 +407,9 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         
         Ray nextRay;
 #ifdef SOLUTION_REFLECTION_REFRACTION
+		nextRay.origin = currentHitInfo.position;
+        nextRay.direction = reflect(normalize(currentRay.direction), currentHitInfo.normal);
+        //todo: normal
 #else
         // Put your code to compute the reflection ray in the ifdef above
 #endif
@@ -441,6 +434,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     for(int i = 0; i < maxRefractionStepCount; i++) {
         
 #ifdef SOLUTION_REFLECTION_REFRACTION
+        refractionWeight *= currentHitInfo.material.refraction;
 #else
         // Put your refraction weighting code in the ifdef above
         reflectionWeight *= 0.5;
@@ -455,10 +449,16 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         
         
 #ifdef SOLUTION_REFLECTION_REFRACTION      
+        float sourceIOR = currentIOR;
+        float destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+        float IOR = sourceIOR / destIOR;
+		nextRay.origin = currentHitInfo.position;
+        nextRay.direction = refract(normalize(currentRay.direction), currentHitInfo.normal, IOR);
+        currentRay = nextRay;
+        currentIOR = destIOR;
 #else
-        float sourceIOR;
-        float destIOR;
         // Put your code to compute the reflection ray and track the IOR in the ifdef above
+
 #endif
         currentHitInfo = intersectScene(scene, currentRay, 0.001, 10000.0);
         
@@ -581,6 +581,5 @@ void main() {
     
     // Compute color for fragment
     gl_FragColor.rgb = tonemap(colorForFragment(scene, gl_FragCoord.xy));
-    gl_FragColor.a = 1.0;
-    
+    gl_FragColor.a = 1.0;   
 }
