@@ -1,8 +1,8 @@
 #define SOLUTION_CYLINDER_AND_PLANE
 #define SOLUTION_SHADOW
 #define SOLUTION_REFLECTION_REFRACTION
-//#define SOLUTION_FRESNEL
-//#define SOLUTION_BOOLEAN
+#define SOLUTION_FRESNEL
+#define SOLUTION_BOOLEAN
 
 precision highp float;
 uniform ivec2 viewport; 
@@ -44,7 +44,7 @@ struct Cylinder {
 #define BOOLEAN_MODE_MINUS 1			// minus 
 
 struct Boolean {
-    Sphere spheres[2];
+    Sphere[2] spheres;
     int mode;
 };
 
@@ -254,11 +254,73 @@ HitInfo intersectCylinder(const Ray ray, const Cylinder cylinder, const float tM
 }
 
 bool inside(const vec3 position, const Sphere sphere) {
-    return length(position - sphere.position) < sphere.radius;
+    return length(position - sphere.position) < sphere.radius + 0.001;
 }
 
 HitInfo intersectBoolean(const Ray ray, const Boolean boolean, const float tMin, const float tMax) {
 #ifdef SOLUTION_BOOLEAN
+	
+    HitInfo hit_info0 = intersectSphere(ray, boolean.spheres[0], tMin, tMax), hit_info1 = intersectSphere(ray, boolean.spheres[1], tMin, tMax);
+    
+    //HitInfo hitPoint = getEmptyHit();
+    if (boolean.mode == BOOLEAN_MODE_AND) {
+        if (hit_info0.t > hit_info1.t) {
+            HitInfo temp = hit_info0;
+            hit_info0 = hit_info1;
+            hit_info1 = temp;
+        }
+        if (!hit_info0.hit || !hit_info1.hit) {
+            return getEmptyHit();
+        }
+        if (!inside(ray.origin, boolean.spheres[0]) && !inside(ray.origin, boolean.spheres[1])) {
+            if (inside(hit_info1.position, boolean.spheres[0]) && inside(hit_info1.position, boolean.spheres[1])) {
+                return hit_info1;
+            } else {
+                return getEmptyHit();
+            }
+        } else {
+            if (inside(hit_info0.position, boolean.spheres[0]) && inside(hit_info0.position, boolean.spheres[1])) {
+                return hit_info0;
+            } else {
+                return getEmptyHit();
+            }
+        }
+    } else if (boolean.mode == BOOLEAN_MODE_MINUS) {
+        if (!hit_info0.hit && !hit_info1.hit) {
+            return getEmptyHit();
+        }
+        if (!hit_info1.hit) {
+            return getEmptyHit();
+        }
+        if (!hit_info0.hit) {
+            return hit_info1;
+        }
+        // hit twice
+        if (!inside(ray.origin, boolean.spheres[0]) && !inside(ray.origin, boolean.spheres[1])) {
+            if (hit_info1.t < hit_info0.t) {
+                return hit_info1;
+            } else {
+				if (!inside(hit_info1.position, boolean.spheres[0])) {
+					return hit_info1;
+				}
+                Ray exray;
+                exray.origin = hit_info1.position;
+                exray.direction = ray.direction;
+                HitInfo hit_info2 = intersectSphere(exray, boolean.spheres[0], tMin, tMax);
+                if (inside(hit_info2.position, boolean.spheres[1])) {
+                    return hit_info2;
+                } else {
+                    return getEmptyHit();
+                }
+            }
+        } else {
+            if (inside(hit_info0.position, boolean.spheres[1])) {
+                return hit_info0;
+            } else {
+                return getEmptyHit();
+            }
+        }
+    }
 #else
     // Put your code for the boolean task in the #ifdef above!
 #endif
@@ -363,9 +425,33 @@ Ray getFragCoordRay(const vec2 frag_coord) {
     
     return Ray(origin, direction);
 }
-
-float fresnel(const vec3 viewDirection, const vec3 normal) {
+// Note that viewDirection & normal should be normalized
+float fresnel(const vec3 viewDirection, const vec3 normal, float sourceIOR, float destIOR) {
 #ifdef SOLUTION_FRESNEL
+	if (abs(destIOR) < 0.001) {
+		return 1.0;
+	}
+	if (abs(sourceIOR) < 0.001) {
+		//return 1.;
+	}
+    // Test total reflection
+    float cosalpha = clamp(dot(-viewDirection, normal), 0.0, 1.0);
+	float IOR = sourceIOR / destIOR;
+    if (1.0 + IOR * IOR * (cosalpha * cosalpha - 1.0) < 0.) {
+        return 1.0;
+    } 
+	float R0 = ((sourceIOR - destIOR) / (sourceIOR + destIOR)) * ((sourceIOR - destIOR) / (sourceIOR + destIOR));
+	return R0 + (1.0 - R0) * pow(1.0 - cosalpha, 2.0);
+    
+    // Calculate Fr (ratio of reflected light)
+    float sinalpha = sqrt(max(0.0, 1.0 - cosalpha * cosalpha));
+    float sinbeta = clamp(sourceIOR * sinalpha / destIOR, 0.0, 1.0);
+    float cosbeta = sqrt(max(0.0, 1.0 - sinbeta * sinbeta));
+    float frs = (destIOR * cosbeta - sourceIOR * cosalpha) / (destIOR * cosbeta + sourceIOR * cosalpha);
+    float frp = (sourceIOR * cosbeta - destIOR * cosalpha) / (destIOR * cosalpha + sourceIOR * cosbeta);
+    float fr = 0.5 * (frs * frs + frp * frp);
+
+    return fr;
 #else
     // Put your code to compute the Fresnel effect in the ifdef above
     return 1.0;
@@ -387,6 +473,11 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     
     // The initial strength of the reflection
     float reflectionWeight = 1.0;
+
+    // The initial medium is air
+    float currentIOR = 1.0;
+    float sourceIOR;
+    float destIOR;
     
     const int maxReflectionStepCount = 2;
     for(int i = 0; i < maxReflectionStepCount; i++) {
@@ -400,6 +491,11 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 #endif
         
 #ifdef SOLUTION_FRESNEL
+		sourceIOR = currentIOR;
+        destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+        //reflectionWeight *= fresnel(normalize(currentRay.direction), currentHitInfo.normal, sourceIOR, destIOR);
+		reflectionWeight *= 0.5;
+        currentIOR = destIOR;
 #else
         // Replace with Fresnel code in the ifdef above
         reflectionWeight *= 0.5;
@@ -425,7 +521,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     currentHitInfo = initialHitInfo;
     
     // The initial medium is air
-    float currentIOR = 1.0;
+    currentIOR = 1.0;
     
     // The initial strength of the refraction.
     float refractionWeight = 1.0;
@@ -441,6 +537,12 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 #endif
         
 #ifdef SOLUTION_FRESNEL
+		sourceIOR = currentIOR;
+        destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+		if (abs(destIOR) < 0.001) {
+			break;
+		}
+        //refractionWeight *= (1.0 - fresnel(normalize(currentRay.direction), currentHitInfo.normal, sourceIOR, destIOR));
 #else
         // Put your Fresnel code in the ifdef above
 #endif      
@@ -448,9 +550,8 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         Ray nextRay;
         
         
-#ifdef SOLUTION_REFLECTION_REFRACTION      
-        float sourceIOR = currentIOR;
-        float destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+#ifdef SOLUTION_REFLECTION_REFRACTION
+		
         float IOR = sourceIOR / destIOR;
 		nextRay.origin = currentHitInfo.position;
         nextRay.direction = refract(normalize(currentRay.direction), currentHitInfo.normal, IOR);
@@ -513,6 +614,7 @@ void main() {
     bool soloBoolean = false;
     
 #ifdef SOLUTION_BOOLEAN
+	soloBoolean = true;
 #endif
     
     if(!soloBoolean) {
