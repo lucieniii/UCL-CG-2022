@@ -2,7 +2,7 @@
 #define SOLUTION_SHADOW
 #define SOLUTION_REFLECTION_REFRACTION
 #define SOLUTION_FRESNEL
-#define SOLUTION_BOOLEAN
+//#define SOLUTION_BOOLEAN
 
 precision highp float;
 uniform ivec2 viewport; 
@@ -425,6 +425,7 @@ Ray getFragCoordRay(const vec2 frag_coord) {
     
     return Ray(origin, direction);
 }
+/*
 // Note that viewDirection & normal should be normalized
 float fresnel(const vec3 viewDirection, const vec3 normal, float sourceIOR, float destIOR) {
 #ifdef SOLUTION_FRESNEL
@@ -457,6 +458,16 @@ float fresnel(const vec3 viewDirection, const vec3 normal, float sourceIOR, floa
     return 1.0;
 #endif
 }
+*/
+
+float fresnel(const vec3 viewDirection, const vec3 normal) {
+#ifdef SOLUTION_FRESNEL
+    return 1.0 - dot(-normalize(viewDirection), normal);
+#else
+  	// Put your code to compute the Fresnel effect in the ifdef above
+	return 1.0;
+#endif
+}
 
 vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     
@@ -475,9 +486,9 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     float reflectionWeight = 1.0;
 
     // The initial medium is air
-    float currentIOR = 1.0;
-    float sourceIOR;
-    float destIOR;
+    //float currentIOR = 1.0;
+    //float sourceIOR;
+    //float destIOR;
     
     const int maxReflectionStepCount = 2;
     for(int i = 0; i < maxReflectionStepCount; i++) {
@@ -491,11 +502,12 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 #endif
         
 #ifdef SOLUTION_FRESNEL
-		sourceIOR = currentIOR;
-        destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+		//sourceIOR = currentIOR;
+        //destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
         //reflectionWeight *= fresnel(normalize(currentRay.direction), currentHitInfo.normal, sourceIOR, destIOR);
-		reflectionWeight *= 0.5;
-        currentIOR = destIOR;
+		//reflectionWeight *= 0.5;
+        reflectionWeight *= fresnel(normalize(currentRay.direction), currentHitInfo.normal);
+        //currentIOR = destIOR;
 #else
         // Replace with Fresnel code in the ifdef above
         reflectionWeight *= 0.5;
@@ -521,7 +533,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     currentHitInfo = initialHitInfo;
     
     // The initial medium is air
-    currentIOR = 1.0;
+    float currentIOR = 1.0;
     
     // The initial strength of the refraction.
     float refractionWeight = 1.0;
@@ -537,11 +549,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 #endif
         
 #ifdef SOLUTION_FRESNEL
-		sourceIOR = currentIOR;
-        destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
-		if (abs(destIOR) < 0.001) {
-			break;
-		}
+		reflectionWeight *= 1.0 - fresnel(normalize(currentRay.direction), currentHitInfo.normal);
         //refractionWeight *= (1.0 - fresnel(normalize(currentRay.direction), currentHitInfo.normal, sourceIOR, destIOR));
 #else
         // Put your Fresnel code in the ifdef above
@@ -551,7 +559,11 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         
         
 #ifdef SOLUTION_REFLECTION_REFRACTION
-		
+		float sourceIOR = currentIOR;
+        float destIOR = currentHitInfo.enteringPrimitive ? currentHitInfo.material.ior : 1.0;
+		if (abs(destIOR) < 0.001) {
+			break;
+		}
         float IOR = sourceIOR / destIOR;
 		nextRay.origin = currentHitInfo.position;
         nextRay.direction = refract(normalize(currentRay.direction), currentHitInfo.normal, IOR);
