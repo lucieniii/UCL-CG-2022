@@ -462,7 +462,9 @@ float fresnel(const vec3 viewDirection, const vec3 normal, float sourceIOR, floa
 
 float fresnel(const vec3 viewDirection, const vec3 normal) {
 #ifdef SOLUTION_FRESNEL
-    return 1.0 - dot(-normalize(viewDirection), normal);
+	float R0 = 0.04;
+	float cosalpha = dot(-normalize(viewDirection), normal);
+	return R0 + (1.0 - R0) * pow(1.0 - cosalpha, 3.0);
 #else
   	// Put your code to compute the Fresnel effect in the ifdef above
 	return 1.0;
@@ -496,6 +498,9 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
         if(!currentHitInfo.hit) break;
         
 #ifdef SOLUTION_REFLECTION_REFRACTION
+		if (abs(currentHitInfo.material.reflection) < 0.001) {
+			break;
+		}
 		reflectionWeight *= currentHitInfo.material.reflection;
 #else
         // Put your reflection weighting code in the ifdef above
@@ -542,6 +547,9 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
     for(int i = 0; i < maxRefractionStepCount; i++) {
         
 #ifdef SOLUTION_REFLECTION_REFRACTION
+		if (abs(currentHitInfo.material.refraction) < 0.001) {
+			break;
+		}
         refractionWeight *= currentHitInfo.material.refraction;
 #else
         // Put your refraction weighting code in the ifdef above
@@ -549,6 +557,7 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 #endif
         
 #ifdef SOLUTION_FRESNEL
+		
 		reflectionWeight *= 1.0 - fresnel(normalize(currentRay.direction), currentHitInfo.normal);
         //refractionWeight *= (1.0 - fresnel(normalize(currentRay.direction), currentHitInfo.normal, sourceIOR, destIOR));
 #else
@@ -564,7 +573,11 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 		if (abs(destIOR) < 0.001) {
 			break;
 		}
-        float IOR = sourceIOR / destIOR;
+		float cosalpha = dot(-normalize(currentRay.direction), currentHitInfo.normal);
+		float IOR = sourceIOR / destIOR;
+    	if (1.0 + IOR * IOR * (cosalpha * cosalpha - 1.0) < 0.) {
+        	break;
+    	}
 		nextRay.origin = currentHitInfo.position;
         nextRay.direction = refract(normalize(currentRay.direction), currentHitInfo.normal, IOR);
         currentRay = nextRay;
