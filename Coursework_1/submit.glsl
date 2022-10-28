@@ -175,19 +175,23 @@ HitInfo intersectSphere(const Ray ray, const Sphere sphere, const float tMin, co
 
 HitInfo intersectPlane(const Ray ray,const Plane plane, const float tMin, const float tMax) {
 #ifdef SOLUTION_CYLINDER_AND_PLANE
+    // Calculate t for the intersect point of a ray and a plane.
+    // Substitute the point on the ray to the plane equation then solve the t.
     float t = (plane.d - dot(ray.origin, plane.normal)) / dot(plane.normal, ray.direction);
     if (t >= 0.) {
+        // Check the avalibility of the t
         if (!isTInInterval(t, tMin, tMax)) {
             return getEmptyHit();
         }
+        // Calculate the hit position
         vec3 hitPosition = ray.origin + t * ray.direction;
         return HitInfo(
                        true,
                        t,
                        hitPosition,
-                       plane.normal,
+                       plane.normal,   // The normal of plane is just the normal of Hitinfo.
                        plane.material,
-                       (dot(plane.normal, ray.origin) + plane.d) > 0. ? true : false
+                       false           // Since the plane has no thickness, enteringPrimitive can be set to false here.
                        );
     }
 #endif  
@@ -200,6 +204,9 @@ float lengthSquared(vec3 x) {
 
 HitInfo intersectCylinder(const Ray ray, const Cylinder cylinder, const float tMin, const float tMax) {
 #ifdef SOLUTION_CYLINDER_AND_PLANE
+    // Calculate t for the intersect point of a ray and a cylinder.
+    // Build the equation by letting the distance from a point on the ray to the axis of the cylinder equals to radius of the cylinder.
+    // Use cross product to calculate the distance from a point to a line.
     float cx = cylinder.direction.x, cy = cylinder.direction.y, cz = cylinder.direction.z;
     float rx = ray.direction.x, ry = ray.direction.y, rz = ray.direction.z;
     float crx = cylinder.position.x - ray.origin.x, cry = cylinder.position.y - ray.origin.y, crz = cylinder.position.z - ray.origin.z;
@@ -220,23 +227,19 @@ HitInfo intersectCylinder(const Ray ray, const Cylinder cylinder, const float tM
         }
         
         vec3 hitPosition = ray.origin + smallestTInInterval * ray.direction;
+        // footPoint is a point on the axis of cylinder which has the smallest distance to the hitPosition.
         vec3 footPoint = cylinder.position - (dot(cylinder.direction, cylinder.position - hitPosition) / lengthSquared(cylinder.direction)) * cylinder.direction;
         float originToCylinder = length(cross(cylinder.direction, cylinder.position - ray.origin)) / length(cylinder.direction);
         
-        //Checking if we're inside the sphere by checking if the ray's origin is inside. If we are, then the normal
-        //at the intersection surface points towards the center. Otherwise, if we are outside the sphere, then the normal
-        //at the intersection surface points outwards from the sphere's center. This is important for refraction.
+        // Checking if we're inside the cylinder and then determine the direction of normal.
         vec3 normal =
         originToCylinder < cylinder.radius + 0.001?
         -normalize(hitPosition - footPoint):
         normalize(hitPosition - footPoint);
         
-        //Checking if we're inside the sphere by checking if the ray's origin is inside,
-        // but this time for IOR bookkeeping.
-        //If we are inside, set a flag to say we're leaving. If we are outside, set the flag to say we're entering.
-        //This is also important for refraction.
+        // Checking if we're inside the cylinder and then determine if the ray is entering a cylinder.
         bool enteringPrimitive =
-        length(hitPosition - footPoint) < cylinder.radius + 0.001 ?
+        length(ray.origin - footPoint) < cylinder.radius + 0.001 ?
         false:
         true;
         
@@ -253,30 +256,39 @@ HitInfo intersectCylinder(const Ray ray, const Cylinder cylinder, const float tM
 }
 
 bool inside(const vec3 position, const Sphere sphere) {
-    return length(position - sphere.position) < sphere.radius;
+    return length(position - sphere.position) < sphere.radius + 0.001;
 }
 
+/*
+ * We can record more possible value of t in the HitInfo when calculating intersection to support minus operation.
+ * Because in the minus operation, a further t on a shpere may be the true intersection point.
+ */
 HitInfo intersectBoolean(const Ray ray, const Boolean boolean, const float tMin, const float tMax) {
 #ifdef SOLUTION_BOOLEAN
+    // Get the hitinfo of two sphere.
     HitInfo hit_info0 = intersectSphere(ray, boolean.spheres[0], tMin, tMax), hit_info1 = intersectSphere(ray, boolean.spheres[1], tMin, tMax);
     
-    //HitInfo hitPoint = getEmptyHit();
     if (boolean.mode == BOOLEAN_MODE_AND) {
+        // BOOLEAN_MODE_AND
         if (hit_info0.t > hit_info1.t) {
+            // Let the hit_info0 be the nearer hit point.
             HitInfo temp = hit_info0;
             hit_info0 = hit_info1;
             hit_info1 = temp;
         }
+        // Not in both spheres.
         if (!hit_info0.hit || !hit_info1.hit) {
             return getEmptyHit();
         }
         if (!inside(ray.origin, boolean.spheres[0]) && !inside(ray.origin, boolean.spheres[1])) {
+            // If the ray origin is outside of two spheres, the further hit point could be the real one.
             if (inside(hit_info1.position, boolean.spheres[0]) || inside(hit_info1.position, boolean.spheres[1])) {
                 return hit_info1;
             } else {
                 return getEmptyHit();
             }
         } else {
+            // Otherwise, the nearer hit point could be the real one.
             if (inside(hit_info0.position, boolean.spheres[0]) || inside(hit_info0.position, boolean.spheres[1])) {
                 return hit_info0;
             } else {
@@ -284,23 +296,33 @@ HitInfo intersectBoolean(const Ray ray, const Boolean boolean, const float tMin,
             }
         }
     } else if (boolean.mode == BOOLEAN_MODE_MINUS) {
+        // BOOLEAN_MODE_MINUS
+        // Substract A from B (B - A)
+        // hit_info0: A, hit_info1: B
         if (!hit_info0.hit && !hit_info1.hit) {
+            // Both not hit.
             return getEmptyHit();
         }
         if (!hit_info1.hit) {
+            // Not hit B
             return getEmptyHit();
         }
         if (!hit_info0.hit) {
+            // Hit B but not hit A
             return hit_info1;
         }
-        // hit twice
         if (!inside(ray.origin, boolean.spheres[0]) && !inside(ray.origin, boolean.spheres[1])) {
+            // If the ray origin is outside of two spheres
             if (hit_info1.t < hit_info0.t) {
+                // If B is hitted first
                 return hit_info1;
             } else {
+                // If A is hitted first
                 if (!inside(hit_info1.position, boolean.spheres[0])) {
+                    // If hit_info1 is not in A
                     return hit_info1;
                 }
+                // else, we should check the next intersection point on B
                 Ray exray;
                 exray.origin = hit_info1.position;
                 exray.direction = ray.direction;
@@ -312,6 +334,7 @@ HitInfo intersectBoolean(const Ray ray, const Boolean boolean, const float tMin,
                 }
             }
         } else {
+            // Otherwise, only if hit_info0 is inside the B
             if (inside(hit_info0.position, boolean.spheres[1])) {
                 return hit_info0;
             } else {
@@ -424,10 +447,21 @@ Ray getFragCoordRay(const vec2 frag_coord) {
 
 float fresnel(const vec3 viewDirection, const vec3 normal, const float sourceIOR, const float destIOR) {
 #ifdef SOLUTION_FRESNEL
-    // float R0 = 0.04;
-    float R0 = ((sourceIOR - destIOR) / (sourceIOR + destIOR)) * ((sourceIOR - destIOR) / (sourceIOR + destIOR));
+    // Here I use the Schlick approximation, for the effect is almost the same as the fresnel equation.
+    /* To get a better result, I fix the parameter R0 in Schlick approximation.
+     * The IORs of the materials in this template are not so reasonable, many of them are 0.0.
+     * So I just assume that one of the sourceIOR or destIOR is 1.0 and another is 1.5
+     * , for the actual IORs of the materials used are all very close to 1.5.
+     */
+    float R0 = 0.04;
+    // float R0 = ((sourceIOR - destIOR) / (sourceIOR + destIOR)) * ((sourceIOR - destIOR) / (sourceIOR + destIOR));
+    // If the IORs are well setted, the line above canbe uncommented to replace the fixed value of R0.
     float cosalpha = dot(-normalize(viewDirection), normal);
-    return R0 + (1.0 - R0) * pow(1.0 - cosalpha, 5.0);
+    // I change the exponent in the equation from 5.0 to 2.0 to get a better result.
+    return R0 + (1.0 - R0) * pow(1.0 - cosalpha, 2.0);
+
+    // By the way, dot product could archieve a closer result.
+    // return 1.0 - dot(-normalize(viewDirection), normal);
 #else
     // Put your code to compute the Fresnel effect in the ifdef above
     return 1.0;
