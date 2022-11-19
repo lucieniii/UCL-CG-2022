@@ -1,6 +1,5 @@
- 
 #define SOLUTION_RASTERIZATION
-//#define SOLUTION_CLIPPING
+#define SOLUTION_CLIPPING
 //#define SOLUTION_INTERPOLATION
 //#define SOLUTION_ZBUFFERING
 //#define SOLUTION_AALIAS
@@ -77,15 +76,71 @@ void makeEmptyPolygon(out Polygon polygon) {
 int getCrossType(Vertex poli1, Vertex poli2, Vertex wind1, Vertex wind2) {
 #ifdef SOLUTION_CLIPPING
     // TODO
+    // This function assumes that the segments are not parallel or collinear.
+
+    vec2 p, w, p1w1, p1w2, w1p1, w1p2;
+    p.x = poli2.position.x - poli1.position.x;
+    p.y = poli2.position.y - poli1.position.y;
+    w.x = wind2.position.x - wind1.position.x;
+    w.y = wind2.position.y - wind1.position.y;
+    p1w1.x = wind1.position.x - poli1.position.x;
+    p1w1.y = wind1.position.y - poli1.position.y;
+    p1w2.x = wind2.position.x - poli1.position.x;
+    p1w2.y = wind2.position.y - poli1.position.y;
+    w1p1.x = poli1.position.x - wind1.position.x;
+    w1p1.y = poli1.position.y - wind1.position.y;
+    w1p2.x = poli2.position.x - wind1.position.x;
+    w1p2.y = poli2.position.y - wind1.position.y;
+
+    float testw1 = p.x * p1w1.y - p1w1.x * p.y;
+    float testw2 = p.x * p1w2.y - p1w2.x * p.y;
+    float testp1 = w.x * w1p1.y - w1p1.x * w.y;
+    float testp2 = w.x * w1p2.y - w1p2.x * w.y;
+
+    if (testw1 * testw2 <= 0. && testp1 * testp2 <= 0.) {
+        if (testp1 <= 0.) {
+            return LEAVING;
+        } else {
+            return ENTERING;
+        }
+    } else if (testp2 < 0.) {
+        return INSIDE;
+    } else {
+        return OUTSIDE;
+    }
+    
 #else
     return INSIDE;
 #endif
 }
-
+  
 // This function assumes that the segments are not parallel or collinear.
 Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
 #ifdef SOLUTION_CLIPPING
     // TODO
+    
+    vec2 A, B, U;
+    A.x = b.position.x - a.position.x;
+    A.y = b.position.y - a.position.y;
+    B.x = d.position.x - c.position.x;
+    B.y = d.position.y - c.position.y;
+    U.x = b.position.x - d.position.x;
+    U.y = b.position.y - d.position.y;
+    float UxB = U.x * B.y - B.x * U.y, AxB = A.x * B.y - B.x * A.y;
+    float T = abs(UxB / AxB);
+
+    Vertex E;
+    E.position = b.position;
+    E.position.x -= T * A.x;
+    E.position.y -= T * A.y;
+    E.position.z -= T * (b.position.z - a.position.z);
+    E.color = T * a.color + (1. - T) * b.color;
+    E.texCoord = T * a.texCoord + (1. - T) * b.texCoord;
+    //E.color = a.color;
+    //E.texCoord = a.texCoord;
+
+    return E;
+
 #else
     return a;
 #endif
@@ -114,6 +169,60 @@ void sutherlandHodgmanClip(Polygon unclipped, Polygon clipWindow, out Polygon re
             // intersect() to be implemented above.
 #ifdef SOLUTION_CLIPPING
             // TODO
+            
+            Vertex poli1, poli2, wind1, wind2;
+            poli1 = getWrappedPolygonVertex(oldClipped, j);
+            poli2 = getWrappedPolygonVertex(oldClipped, j + 1);
+            wind1 = getWrappedPolygonVertex(clipWindow, i);
+            wind2 = getWrappedPolygonVertex(clipWindow, i + 1);
+
+            // Check if the segments are collinear.
+            vec2 p1w1, p1w2, p2w1, p2w2;
+            p1w1.x = wind1.position.x - poli1.position.x;
+            p1w1.y = wind1.position.y - poli1.position.y;
+            p1w2.x = wind2.position.x - poli1.position.x;
+            p1w2.y = wind2.position.y - poli1.position.y;
+            p2w1.x = wind1.position.x - poli2.position.x;
+            p2w1.y = wind1.position.y - poli2.position.y;
+            p2w2.x = wind2.position.x - poli2.position.x;
+            p2w2.y = wind2.position.y - poli2.position.y;
+
+            vec2 p1, p2, w1, w2;
+            p1.x = poli1.position.x;
+            p1.y = poli1.position.y;
+            p2.x = poli2.position.x;
+            p2.y = poli2.position.y;
+            w1.x = wind1.position.x;
+            w1.y = wind1.position.y;
+            w2.x = wind2.position.x;
+            w2.y = wind2.position.y;
+            
+            float maxx = w1.x > w2.x ? w1.x : w2.x;
+            float minx = w1.x > w2.x ? w2.x : w1.x;
+            float maxy = w1.y > w2.y ? w1.y : w2.y;
+            float miny = w1.y > w2.y ? w2.y : w1.y;
+
+            float testp1 = abs(p1w1.x * p1w2.y - p1w2.x * p1w1.y);
+            float testp2 = abs(p2w1.x * p2w2.y - p2w2.x * p2w1.y);
+            if (testp1 < 0.001 && testp2 < 0.001) {
+                //if (minx <= p1.x && p1.x <= maxx && miny <= p1.y && p1.y <= maxy) {
+                //    appendVertexToPolygon(clipped, poli1);    
+                //}
+                if (minx <= p2.x && p2.x <= maxx && miny <= p2.y && p2.y <= maxy) {
+                    appendVertexToPolygon(clipped, poli2);    
+                }
+                continue;
+            }
+
+            int clipType = getCrossType(poli1, poli2, wind1, wind2);
+            if (clipType == ENTERING) {
+                appendVertexToPolygon(clipped, intersect2D(poli1, poli2, wind1, wind2));
+                appendVertexToPolygon(clipped, poli2);
+            } else if (clipType == LEAVING) {
+                appendVertexToPolygon(clipped, intersect2D(poli1, poli2, wind1, wind2)); 
+            } else if (clipType == INSIDE) {
+                appendVertexToPolygon(clipped, poli2);
+            }
 #else
             appendVertexToPolygon(clipped, getWrappedPolygonVertex(oldClipped, j));
 #endif
