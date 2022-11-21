@@ -1,6 +1,6 @@
 #define SOLUTION_RASTERIZATION
 #define SOLUTION_CLIPPING
-//#define SOLUTION_INTERPOLATION
+#define SOLUTION_INTERPOLATION
 //#define SOLUTION_ZBUFFERING
 //#define SOLUTION_AALIAS
 //#define SOLUTION_TEXTURING
@@ -134,6 +134,8 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     E.position.x -= T * A.x;
     E.position.y -= T * A.y;
     E.position.z -= T * (b.position.z - a.position.z);
+
+    // TODO: color and texture
     E.color = T * a.color + (1. - T) * b.color;
     E.texCoord = T * a.texCoord + (1. - T) * b.texCoord;
     //E.color = a.color;
@@ -320,6 +322,28 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 
 #ifdef SOLUTION_INTERPOLATION
             // TODO
+            Vertex A, M, N;
+            M = getWrappedPolygonVertex(polygon, i + polygon.vertexCount - 1);
+            A = getWrappedPolygonVertex(polygon, i);
+            N = getWrappedPolygonVertex(polygon, i + 1);
+            vec2 Axy, Mxy, Nxy, PA, PM, PN;
+            Axy.x = A.position.x;
+            Axy.y = A.position.y;
+            Mxy.x = M.position.x;
+            Mxy.y = M.position.y;
+            Nxy.x = N.position.x;
+            Nxy.y = N.position.y;
+            PA = Axy - point;
+            PM = Mxy - point;
+            PN = Nxy - point;
+            float alpha, beta, cosalpha, cosbeta;
+            cosalpha = dot(PM, PA) / length(PM) / length(PA);
+            cosbeta  = dot(PN, PA) / length(PN) / length(PA);
+            alpha = acos(cosalpha);
+            beta  = acos(cosbeta);
+            float wi = (tan(alpha / 2.) + tan(beta / 2.)) / length(PA);
+            weight_sum += wi;
+            colorSum += A.color * wi;
 #endif
 
 #ifdef SOLUTION_TEXTURING
@@ -330,6 +354,9 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
   
 #ifdef SOLUTION_INTERPOLATION
     // TODO
+    result.position.x = point.x;
+    result.position.y = point.y;
+    result.color = colorSum / weight_sum;
 #endif
 #ifdef SOLUTION_ZBUFFERING
     // TODO
