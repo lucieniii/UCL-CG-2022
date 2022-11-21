@@ -1,7 +1,7 @@
 #define SOLUTION_RASTERIZATION
 #define SOLUTION_CLIPPING
 #define SOLUTION_INTERPOLATION
-//#define SOLUTION_ZBUFFERING
+#define SOLUTION_ZBUFFERING
 //#define SOLUTION_AALIAS
 //#define SOLUTION_TEXTURING
 
@@ -133,7 +133,8 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     E.position = b.position;
     E.position.x -= T * A.x;
     E.position.y -= T * A.y;
-    E.position.z -= T * (b.position.z - a.position.z);
+    T = length(E.position.xy - A.xy) / length(B.xy - A.xy);
+    E.position.z -= 1. / (1. / a.position.z + T * (1. / b.position.z - 1. / a.position.z));
 
     // TODO: color and texture
     E.color = T * a.color + (1. - T) * b.color;
@@ -314,15 +315,71 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
         if (i < polygon.vertexCount) {
 #if defined(SOLUTION_INTERPOLATION) || defined(SOLUTION_ZBUFFERING)
             // TODO
+            Vertex A = getWrappedPolygonVertex(polygon, 0);
+            positionSum = A.position;
+            positionSum.x = point.x;
+            positionSum.y = point.y;
 #endif
 
 #ifdef SOLUTION_ZBUFFERING
             // TODO
+            Vertex B = getWrappedPolygonVertex(polygon, i);
+            Vertex C = getWrappedPolygonVertex(polygon, i + 1);
+            // If p is on the edge
+            Polygon edge_on_poly;
+            makeEmptyPolygon(edge_on_poly);
+            appendVertexToPolygon(edge_on_poly, B);
+            appendVertexToPolygon(edge_on_poly, C);
+            if (isPointOnPolygonVertex(point, edge_on_poly)) {
+                float T = length(point.xy - B.position.xy) / length(C.position.xy - B.position.xy);
+                positionSum.z = 1. / (1. / B.position.z + T * (1. / C.position.z - 1. / B.position.z));
+            } else {
+                vec2 d = vec2(point.x - A.position.x, point.y - A.position.y);
+                d /= length(d);
+                Vertex D;
+                D.position.xy = A.position.xy + 10. * d.xy;
+                vec2 AD = D.position.xy - A.position.xy;
+                vec2 BC = C.position.xy - B.position.xy;
+                if (abs(AD.x * BC.y - BC.x * AD.y) > 0.01) {
+                    vec2 AB = B.position.xy - A.position.xy;
+                    vec2 AC = C.position.xy - A.position.xy;
+                    vec2 BA = A.position.xy - B.position.xy;
+                    vec2 BD = D.position.xy - B.position.xy;
+                    if ((AB.x * AC.y - AC.x * AB.y) * (BA.x * BD.y - BD.x * BA.y) <= 0.) {
+                        Vertex E = intersect2D(B, C, A, D);
+                        float T = length(point.xy - A.position.xy) / length(E.position.xy - A.position.xy);
+                        positionSum.z = 1. / (1. / A.position.z + T * (1. / E.position.z - 1. / A.position.z));    
+                    }
+                }
+            }
+            /*
+            Vertex A = getWrappedPolygonVertex(polygon, 0);
+            Vertex B = getWrappedPolygonVertex(polygon, i);
+            Vertex C = getWrappedPolygonVertex(polygon, i + 1);
+            Polygon tri;
+            makeEmptyPolygon(tri);
+            appendVertexToPolygon(tri, A);
+            appendVertexToPolygon(tri, B);
+            appendVertexToPolygon(tri, C);
+            if (isPointInPolygon(point, tri)) {
+                positionSum = A.position;
+                positionSum.x = point.x;
+                positionSum.y = point.y;
+                vec2 d = vec2(point.x - A.position.x, point.y - A.position.y);
+                d /= length(d);
+                Vertex D;
+                D.position.x = A.position.x + 100. * d.x;
+                D.position.y = A.position.y + 100. * d.y;
+                Vertex E = intersect2D(B, C, A, D);
+                float T = length(vec2(point.x - A.position.x, point.y - A.position.y)) / length(vec2(E.position.x - A.position.x, E.position.y - A.position.y));
+                positionSum.z = 1. / (1. / A.position.z + T * (1. / E.position.z - 1. / A.position.z));
+            }
+            */
 #endif
 
 #ifdef SOLUTION_INTERPOLATION
             // TODO
-            Vertex A, M, N;
+            Vertex M, N;
             M = getWrappedPolygonVertex(polygon, i + polygon.vertexCount - 1);
             A = getWrappedPolygonVertex(polygon, i);
             N = getWrappedPolygonVertex(polygon, i + 1);
@@ -354,12 +411,13 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
   
 #ifdef SOLUTION_INTERPOLATION
     // TODO
-    result.position.x = point.x;
-    result.position.y = point.y;
+    // result.position.x = point.x;
+    // result.position.y = point.y;
     result.color = colorSum / weight_sum;
 #endif
 #ifdef SOLUTION_ZBUFFERING
     // TODO
+    result.position = positionSum;
 #endif
 
 #ifdef SOLUTION_TEXTURING
@@ -562,9 +620,14 @@ void drawPolygon(
         Vertex interpolatedVertex = 
           interpolateVertex(point, projectedPolygon);
 #ifdef SOLUTION_ZBUFFERING
+        float now_depth = interpolatedVertex.position.z;
+        if (now_depth < depth) {
+            color = getInterpVertexColor(interpolatedVertex, oldPolygon.textureType);
+            depth = now_depth;    
+        }
 #else
-      color = getInterpVertexColor(interpolatedVertex, oldPolygon.textureType);
-      depth = interpolatedVertex.position.z;      
+        color = getInterpVertexColor(interpolatedVertex, oldPolygon.textureType);
+        depth = interpolatedVertex.position.z;      
 #endif
    }
   
