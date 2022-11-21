@@ -79,18 +79,12 @@ int getCrossType(Vertex poli1, Vertex poli2, Vertex wind1, Vertex wind2) {
     // This function assumes that the segments are not parallel or collinear.
 
     vec2 p, w, p1w1, p1w2, w1p1, w1p2;
-    p.x = poli2.position.x - poli1.position.x;
-    p.y = poli2.position.y - poli1.position.y;
-    w.x = wind2.position.x - wind1.position.x;
-    w.y = wind2.position.y - wind1.position.y;
-    p1w1.x = wind1.position.x - poli1.position.x;
-    p1w1.y = wind1.position.y - poli1.position.y;
-    p1w2.x = wind2.position.x - poli1.position.x;
-    p1w2.y = wind2.position.y - poli1.position.y;
-    w1p1.x = poli1.position.x - wind1.position.x;
-    w1p1.y = poli1.position.y - wind1.position.y;
-    w1p2.x = poli2.position.x - wind1.position.x;
-    w1p2.y = poli2.position.y - wind1.position.y;
+    p.xy = poli2.position.xy - poli1.position.xy;
+    w.xy = wind2.position.xy - wind1.position.xy;
+    p1w1.xy = wind1.position.xy - poli1.position.xy;
+    p1w2.xy = wind2.position.xy - poli1.position.xy;
+    w1p1.xy = poli1.position.xy - wind1.position.xy;
+    w1p2.xy = poli2.position.xy - wind1.position.xy;
 
     float testw1 = p.x * p1w1.y - p1w1.x * p.y;
     float testw2 = p.x * p1w2.y - p1w2.x * p.y;
@@ -120,12 +114,9 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     // TODO
     
     vec2 A, B, U;
-    A.x = b.position.x - a.position.x;
-    A.y = b.position.y - a.position.y;
-    B.x = d.position.x - c.position.x;
-    B.y = d.position.y - c.position.y;
-    U.x = b.position.x - d.position.x;
-    U.y = b.position.y - d.position.y;
+    A.xy = b.position.xy - a.position.xy;
+    B.xy = d.position.xy - c.position.xy;
+    U.xy = b.position.xy - d.position.xy;
     float UxB = U.x * B.y - B.x * U.y, AxB = A.x * B.y - B.x * A.y;
     float T = UxB / AxB;
 
@@ -180,24 +171,16 @@ void sutherlandHodgmanClip(Polygon unclipped, Polygon clipWindow, out Polygon re
 
             // Check if the segments are collinear.
             vec2 p1w1, p1w2, p2w1, p2w2;
-            p1w1.x = wind1.position.x - poli1.position.x;
-            p1w1.y = wind1.position.y - poli1.position.y;
-            p1w2.x = wind2.position.x - poli1.position.x;
-            p1w2.y = wind2.position.y - poli1.position.y;
-            p2w1.x = wind1.position.x - poli2.position.x;
-            p2w1.y = wind1.position.y - poli2.position.y;
-            p2w2.x = wind2.position.x - poli2.position.x;
-            p2w2.y = wind2.position.y - poli2.position.y;
+            p1w1.xy = wind1.position.xy - poli1.position.xy;
+            p1w2.xy = wind2.position.xy - poli1.position.xy;
+            p2w1.xy = wind1.position.xy - poli2.position.xy;
+            p2w2.xy = wind2.position.xy - poli2.position.xy;
 
             vec2 p1, p2, w1, w2;
-            p1.x = poli1.position.x;
-            p1.y = poli1.position.y;
-            p2.x = poli2.position.x;
-            p2.y = poli2.position.y;
-            w1.x = wind1.position.x;
-            w1.y = wind1.position.y;
-            w2.x = wind2.position.x;
-            w2.y = wind2.position.y;
+            p1.xy = poli1.position.xy;
+            p2.xy = poli2.position.xy;
+            w1.xy = wind1.position.xy;
+            w2.xy = wind2.position.xy;
             
             float maxx = w1.x > w2.x ? w1.x : w2.x;
             float minx = w1.x > w2.x ? w2.x : w1.x;
@@ -247,10 +230,8 @@ int edge(vec2 point, Vertex a, Vertex b) {
 #ifdef SOLUTION_RASTERIZATION
     // TODO
     vec2 ab, ap;
-    ab.x = b.position.x - a.position.x;
-    ab.y = b.position.y - a.position.y;
-    ap.x = point.x - a.position.x;
-    ap.y = point.y - a.position.y;
+    ab.xy = b.position.xy - a.position.xy;
+    ap.xy = point.xy - a.position.xy;
     if (ab.x * ap.y - ap.x * ab.y <= 0.) {
         return INNER_SIDE;
     } else {
@@ -316,8 +297,7 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
             // TODO
             Vertex A = getWrappedPolygonVertex(polygon, 0);
             positionSum = A.position;
-            positionSum.x = point.x;
-            positionSum.y = point.y;
+            positionSum.xy = point.xy;
 #endif
 
 #ifdef SOLUTION_ZBUFFERING
@@ -388,12 +368,9 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
             A = getWrappedPolygonVertex(polygon, i);
             N = getWrappedPolygonVertex(polygon, i + 1);
             vec2 Axy, Mxy, Nxy, PA, PM, PN;
-            Axy.x = A.position.x;
-            Axy.y = A.position.y;
-            Mxy.x = M.position.x;
-            Mxy.y = M.position.y;
-            Nxy.x = N.position.x;
-            Nxy.y = N.position.y;
+            Axy.xy = A.position.xy;
+            Mxy.xy = M.position.xy;
+            Nxy.xy = N.position.xy;
             PA = Axy - point;
             PM = Mxy - point;
             PN = Nxy - point;
