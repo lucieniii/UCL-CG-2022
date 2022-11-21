@@ -127,14 +127,13 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     U.x = b.position.x - d.position.x;
     U.y = b.position.y - d.position.y;
     float UxB = U.x * B.y - B.x * U.y, AxB = A.x * B.y - B.x * A.y;
-    float T = abs(UxB / AxB);
+    float T = UxB / AxB;
 
     Vertex E;
     E.position = b.position;
-    E.position.x -= T * A.x;
-    E.position.y -= T * A.y;
+    E.position.xy -= T * A.xy;
     T = length(E.position.xy - A.xy) / length(B.xy - A.xy);
-    E.position.z -= 1. / (1. / a.position.z + T * (1. / b.position.z - 1. / a.position.z));
+    E.position.z = 1. / (1. / a.position.z + T * (1. / b.position.z - 1. / a.position.z));
 
     // TODO: color and texture
     E.color = T * a.color + (1. - T) * b.color;
@@ -252,7 +251,7 @@ int edge(vec2 point, Vertex a, Vertex b) {
     ab.y = b.position.y - a.position.y;
     ap.x = point.x - a.position.x;
     ap.y = point.y - a.position.y;
-    if (ab.x * ap.y - ap.x * ab.y < 0.) {
+    if (ab.x * ap.y - ap.x * ab.y <= 0.) {
         return INNER_SIDE;
     } else {
         return OUTER_SIDE;
@@ -323,6 +322,7 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 
 #ifdef SOLUTION_ZBUFFERING
             // TODO
+            /*
             Vertex B = getWrappedPolygonVertex(polygon, i);
             Vertex C = getWrappedPolygonVertex(polygon, i + 1);
             // If p is on the edge
@@ -337,10 +337,16 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
                 vec2 d = vec2(point.x - A.position.x, point.y - A.position.y);
                 d /= length(d);
                 Vertex D;
-                D.position.xy = A.position.xy + 10. * d.xy;
-                vec2 AD = D.position.xy - A.position.xy;
+                D.position.xy = A.position.xy + 1000. * d.xy;
+                vec2 AP = point.xy - A.position.xy;
                 vec2 BC = C.position.xy - B.position.xy;
-                if (abs(AD.x * BC.y - BC.x * AD.y) > 0.01) {
+                if (abs(AD.x * BC.y - BC.x * AP.y) > 0.) {
+                    vec2 AP = point.xy - A.position.xy;
+                    vec2 BC = C.position.xy - B.position.xy;
+                    vec2 CP = point.xy - C.position.xy;
+                    float UxB = CP.x * BC.y - BC.x * CP.y, AxB = AP.x * BC.y - BC.x * AP.y;
+                    float T = abs(UxB / AxB);
+                    vec2 E = point - T * AP;
                     vec2 AB = B.position.xy - A.position.xy;
                     vec2 AC = C.position.xy - A.position.xy;
                     vec2 BA = A.position.xy - B.position.xy;
@@ -352,8 +358,7 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
                     }
                 }
             }
-            /*
-            Vertex A = getWrappedPolygonVertex(polygon, 0);
+            
             Vertex B = getWrappedPolygonVertex(polygon, i);
             Vertex C = getWrappedPolygonVertex(polygon, i + 1);
             Polygon tri;
@@ -362,17 +367,16 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
             appendVertexToPolygon(tri, B);
             appendVertexToPolygon(tri, C);
             if (isPointInPolygon(point, tri)) {
-                positionSum = A.position;
-                positionSum.x = point.x;
-                positionSum.y = point.y;
-                vec2 d = vec2(point.x - A.position.x, point.y - A.position.y);
-                d /= length(d);
-                Vertex D;
-                D.position.x = A.position.x + 100. * d.x;
-                D.position.y = A.position.y + 100. * d.y;
-                Vertex E = intersect2D(B, C, A, D);
-                float T = length(vec2(point.x - A.position.x, point.y - A.position.y)) / length(vec2(E.position.x - A.position.x, E.position.y - A.position.y));
-                positionSum.z = 1. / (1. / A.position.z + T * (1. / E.position.z - 1. / A.position.z));
+                vec2 AP = point.xy - A.position.xy;
+                vec2 BC = C.position.xy - B.position.xy;
+                vec2 CP = point.xy - C.position.xy;
+                float UxB = CP.x * BC.y - BC.x * CP.y, AxB = AP.x * BC.y - BC.x * AP.y;
+                float T = UxB / AxB;
+                vec2 E = point - T * AP;
+                float s = length(E - B.position.xy) / length(C.position.xy - B.position.xy);
+                float Ez = 1. / (1. / B.position.z + s * (1. / C.position.z - 1. / B.position.z));
+                s = length(point.xy - A.position.xy) / length(E - A.position.xy);
+                positionSum.z = 1. / (1. / A.position.z + s * (1. / Ez - 1. / A.position.z));
             }
             */
 #endif
@@ -417,6 +421,19 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 #endif
 #ifdef SOLUTION_ZBUFFERING
     // TODO
+    Vertex A = getWrappedPolygonVertex(polygon, 0);
+    Vertex B = getWrappedPolygonVertex(polygon, 1);
+    Vertex C = getWrappedPolygonVertex(polygon, polygon.vertexCount - 1);
+    vec2 AP = point.xy - A.position.xy;
+    vec2 BC = C.position.xy - B.position.xy;
+    vec2 CP = point.xy - C.position.xy;
+    float UxB = CP.x * BC.y - BC.x * CP.y, AxB = AP.x * BC.y - BC.x * AP.y;
+    float T = UxB / AxB;
+    vec2 E = point - T * AP;
+    float s = length(E - B.position.xy) / length(C.position.xy - B.position.xy);
+    float Ez = 1. / (1. / B.position.z + s * (1. / C.position.z - 1. / B.position.z));
+    s = length(point.xy - A.position.xy) / length(E - A.position.xy);
+    positionSum.z = 1. / (1. / A.position.z + s * (1. / Ez - 1. / A.position.z));
     result.position = positionSum;
 #endif
 
