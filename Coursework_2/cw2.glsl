@@ -2,7 +2,7 @@
 #define SOLUTION_CLIPPING
 #define SOLUTION_INTERPOLATION
 #define SOLUTION_ZBUFFERING
-//#define SOLUTION_AALIAS
+#define SOLUTION_AALIAS
 //#define SOLUTION_TEXTURING
 
 precision highp float;
@@ -395,6 +395,21 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
     // result.position.x = point.x;
     // result.position.y = point.y;
     result.color = colorSum / weight_sum;
+    for (int i = 0; i < MAX_VERTEX_COUNT; i++) {
+        if (i == polygon.vertexCount) {
+            break;
+        }
+        Vertex B = getWrappedPolygonVertex(polygon, i);
+        Vertex C = getWrappedPolygonVertex(polygon, i + 1);
+        vec2 BP = point.xy - B.position.xy;
+        vec2 CP = point.xy - C.position.xy;
+        // If p is on the edge
+        if (abs(BP.x * CP.y - CP.x * BP.y) < 0.01) {
+            float T = length(point.xy - B.position.xy) / length(C.position.xy - B.position.xy);
+            result.color = T * C.color + (1. - T) * B.color;
+            break;
+        }
+    }
 #endif
 #ifdef SOLUTION_ZBUFFERING
     // TODO
@@ -701,6 +716,19 @@ void main() {
 	vec3 color = vec3(0);
 	
 #ifdef SOLUTION_AALIAS
+    const int zoom = 2;
+    vec4 old_coord = gl_FragCoord;
+    vec3 colorSum = vec3(0.);
+    for (int i = 0; i < zoom; i++) {
+        for (int j = 0; j < zoom; j++) {
+            vec4 now_coord = old_coord;
+            now_coord.x = old_coord.x * float(zoom) + float(i);
+            now_coord.y = old_coord.y * float(zoom) + float(j);
+            drawScene(now_coord.xy / float(zoom), color);
+            colorSum += color;
+        }
+    }
+    color = colorSum / (float(zoom) * float(zoom));
 #else
     drawScene(gl_FragCoord.xy, color);
 #endif
