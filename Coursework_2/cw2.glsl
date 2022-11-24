@@ -3,7 +3,7 @@
 #define SOLUTION_INTERPOLATION
 #define SOLUTION_ZBUFFERING
 #define SOLUTION_AALIAS
-//#define SOLUTION_TEXTURING
+#define SOLUTION_TEXTURING
 
 precision highp float;
 uniform float time;
@@ -127,7 +127,7 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     E.position.z = 1. / (1. / a.position.z + T * (1. / b.position.z - 1. / a.position.z));
 
     // TODO: color and texture
-    E.color = T * a.color + (1. - T) * b.color;
+    E.color = T * b.color + (1. - T) * a.color;
     E.texCoord = T * a.texCoord + (1. - T) * b.texCoord;
     //E.color = a.color;
     //E.texCoord = a.texCoord;
@@ -385,6 +385,8 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 #endif
 
 #ifdef SOLUTION_TEXTURING
+            texCoordSum += A.texCoord * wi;
+            weight_corr_sum += wi;
 #endif
         }
     }
@@ -407,6 +409,8 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
         if (abs(BP.x * CP.y - CP.x * BP.y) < 0.01) {
             float T = length(point.xy - B.position.xy) / length(C.position.xy - B.position.xy);
             result.color = T * C.color + (1. - T) * B.color;
+            //result.texCoord = T * C.texCoord + (1. - T) * B.texCoord;
+            //weight_corr_sum = -1.;
             break;
         }
     }
@@ -430,6 +434,9 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 #endif
 
 #ifdef SOLUTION_TEXTURING
+    if (weight_corr_sum > 0.) {
+        result.texCoord = texCoordSum / weight_corr_sum;
+    }
 #endif 
 
   return result;
@@ -540,6 +547,12 @@ int intModulo(int a, int b)
 vec3 textureCheckerboard(vec2 texCoord)
 {
 	#ifdef SOLUTION_TEXTURING
+    int x = int(texCoord.x * 8.), y = int(texCoord.y * 8.);
+    if ((x + y) / 2 * 2 != x + y) {
+        return vec3(0.6, 0.6, 0.6);
+    } else {
+        return vec3(1.0, 1.0, 1.0);
+    }
 	#endif
 	return vec3(1.0, 0.0, 0.0); 
 }
@@ -586,6 +599,13 @@ vec3 texturePolkadot(vec2 texCoord)
 	vec3 color = bgColor;
 	
 	#ifdef SOLUTION_TEXTURING
+    for (int i = 0; i < nPolkaDots; i++) {
+        vec2 center = vec2(prngUniform01(), prngUniform01());
+        vec3 dotColor = randomColor();
+        if (length(center - texCoord) <= polkaDotRadius) {
+            return dotColor;
+        }
+    }
 	#endif 
 	return color;
 }
@@ -604,6 +624,15 @@ vec3 textureVoronoi(vec2 texCoord)
 vec3 getInterpVertexColor(Vertex interpVertex, int textureType)
 {
 	#ifdef SOLUTION_TEXTURING
+        if (textureType == TEXTURE_CHECKERBOARD) {
+            return textureCheckerboard(interpVertex.texCoord);
+        } else if (textureType == TEXTURE_POLKADOT) {
+            return texturePolkadot(interpVertex.texCoord);
+        } else if (textureType == TEXTURE_VORONOI) {
+            return textureVoronoi(interpVertex.texCoord);
+        } else {
+           return interpVertex.color; 
+        }
 	#else
 	return interpVertex.color;
 	#endif
