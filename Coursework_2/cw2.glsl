@@ -434,9 +434,7 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 #endif
 
 #ifdef SOLUTION_TEXTURING
-    if (weight_corr_sum > 0.) {
-        result.texCoord = texCoordSum / weight_corr_sum;
-    }
+    result.texCoord = texCoordSum / weight_corr_sum;
 #endif 
 
   return result;
@@ -615,7 +613,29 @@ vec3 textureVoronoi(vec2 texCoord)
 	// This implementation is global, adding a set number of cells at random to the whole texture.
 	prngSeed = globalPrngSeed; // Need to reseed here to play nicely with anti-aliasing
 	const int nVoronoiCells = 15;
-	
+    vec2 VoronoiPoints[nVoronoiCells];
+    vec3 colors[nVoronoiCells];
+    for (int i = 0; i < nVoronoiCells; i++) {
+        VoronoiPoints[i] = vec2(prngUniform01(), prngUniform01());
+        colors[i] = randomColor();
+    }
+    for (int k = 0; k < nVoronoiCells; k++) {
+        float dk = length(VoronoiPoints[k] - texCoord);
+        bool inK = true;
+        for (int j = 0; j < nVoronoiCells; j++) {
+            if (j != k) {
+                float dj = length(VoronoiPoints[j] - texCoord);
+                if (dk > dj) {
+                    inK = false;
+                    break;
+                }
+            }
+        }
+        if (inK) {
+            return colors[k];
+        }
+    }
+
 	#ifdef SOLUTION_TEXTURING
 	#endif
 	return vec3(0.0, 0.0, 1.0); 
