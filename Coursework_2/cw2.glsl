@@ -126,11 +126,8 @@ Vertex intersect2D(Vertex a, Vertex b, Vertex c, Vertex d) {
     T = length(E.position.xy - A.xy) / length(B.xy - A.xy);
     E.position.z = 1. / (1. / a.position.z + T * (1. / b.position.z - 1. / a.position.z));
 
-    // TODO: color and texture
     E.color = T * b.color + (1. - T) * a.color;
     E.texCoord = T * a.texCoord + (1. - T) * b.texCoord;
-    //E.color = a.color;
-    //E.texCoord = a.texCoord;
 
     return E;
 
@@ -302,63 +299,7 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
 
 #ifdef SOLUTION_ZBUFFERING
             // TODO
-            /*
-            Vertex B = getWrappedPolygonVertex(polygon, i);
-            Vertex C = getWrappedPolygonVertex(polygon, i + 1);
-            // If p is on the edge
-            Polygon edge_on_poly;
-            makeEmptyPolygon(edge_on_poly);
-            appendVertexToPolygon(edge_on_poly, B);
-            appendVertexToPolygon(edge_on_poly, C);
-            if (isPointOnPolygonVertex(point, edge_on_poly)) {
-                float T = length(point.xy - B.position.xy) / length(C.position.xy - B.position.xy);
-                positionSum.z = 1. / (1. / B.position.z + T * (1. / C.position.z - 1. / B.position.z));
-            } else {
-                vec2 d = vec2(point.x - A.position.x, point.y - A.position.y);
-                d /= length(d);
-                Vertex D;
-                D.position.xy = A.position.xy + 1000. * d.xy;
-                vec2 AP = point.xy - A.position.xy;
-                vec2 BC = C.position.xy - B.position.xy;
-                if (abs(AD.x * BC.y - BC.x * AP.y) > 0.) {
-                    vec2 AP = point.xy - A.position.xy;
-                    vec2 BC = C.position.xy - B.position.xy;
-                    vec2 CP = point.xy - C.position.xy;
-                    float UxB = CP.x * BC.y - BC.x * CP.y, AxB = AP.x * BC.y - BC.x * AP.y;
-                    float T = abs(UxB / AxB);
-                    vec2 E = point - T * AP;
-                    vec2 AB = B.position.xy - A.position.xy;
-                    vec2 AC = C.position.xy - A.position.xy;
-                    vec2 BA = A.position.xy - B.position.xy;
-                    vec2 BD = D.position.xy - B.position.xy;
-                    if ((AB.x * AC.y - AC.x * AB.y) * (BA.x * BD.y - BD.x * BA.y) <= 0.) {
-                        Vertex E = intersect2D(B, C, A, D);
-                        float T = length(point.xy - A.position.xy) / length(E.position.xy - A.position.xy);
-                        positionSum.z = 1. / (1. / A.position.z + T * (1. / E.position.z - 1. / A.position.z));    
-                    }
-                }
-            }
-            
-            Vertex B = getWrappedPolygonVertex(polygon, i);
-            Vertex C = getWrappedPolygonVertex(polygon, i + 1);
-            Polygon tri;
-            makeEmptyPolygon(tri);
-            appendVertexToPolygon(tri, A);
-            appendVertexToPolygon(tri, B);
-            appendVertexToPolygon(tri, C);
-            if (isPointInPolygon(point, tri)) {
-                vec2 AP = point.xy - A.position.xy;
-                vec2 BC = C.position.xy - B.position.xy;
-                vec2 CP = point.xy - C.position.xy;
-                float UxB = CP.x * BC.y - BC.x * CP.y, AxB = AP.x * BC.y - BC.x * AP.y;
-                float T = UxB / AxB;
-                vec2 E = point - T * AP;
-                float s = length(E - B.position.xy) / length(C.position.xy - B.position.xy);
-                float Ez = 1. / (1. / B.position.z + s * (1. / C.position.z - 1. / B.position.z));
-                s = length(point.xy - A.position.xy) / length(E - A.position.xy);
-                positionSum.z = 1. / (1. / A.position.z + s * (1. / Ez - 1. / A.position.z));
-            }
-            */
+            // In my realization, no code is needed here.
 #endif
 
 #ifdef SOLUTION_INTERPOLATION
@@ -394,8 +335,6 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
   
 #ifdef SOLUTION_INTERPOLATION
     // TODO
-    // result.position.x = point.x;
-    // result.position.y = point.y;
     result.color = colorSum / weight_sum;
     for (int i = 0; i < MAX_VERTEX_COUNT; i++) {
         if (i == polygon.vertexCount) {
@@ -409,8 +348,6 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
         if (abs(BP.x * CP.y - CP.x * BP.y) < 0.01) {
             float T = length(point.xy - B.position.xy) / length(C.position.xy - B.position.xy);
             result.color = T * C.color + (1. - T) * B.color;
-            //result.texCoord = T * C.texCoord + (1. - T) * B.texCoord;
-            //weight_corr_sum = -1.;
             break;
         }
     }
@@ -765,7 +702,12 @@ void main() {
 	vec3 color = vec3(0);
 	
 #ifdef SOLUTION_AALIAS
-    const int zoom = 2;
+    
+    // SSAA
+    /* The bigger zoom is, the better the effect of anto-aliasing is, 
+     * but the speed of rendering will be slower.
+     */
+    const int zoom = 2; 
     vec4 old_coord = gl_FragCoord;
     vec3 colorSum = vec3(0.);
     for (int i = 0; i < zoom; i++) {
