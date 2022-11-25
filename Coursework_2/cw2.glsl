@@ -304,6 +304,15 @@ Vertex interpolateVertex(vec2 point, Polygon polygon) {
             
 #ifdef SOLUTION_INTERPOLATION
             // TODO
+            /* 
+             * Use "Mean-Value Coordinates" as Interpolation Algorithm.
+             * Ref: 
+             *  [1] Zeev Farbman, Gil Hoffer, Yaron Lipman, Daniel Cohen-Or, and Dani Lischinski. 
+             *  2009. Coordinates for instant image cloning.
+             *  ACM Trans. Graph. 28, 3, Article 67 (August 2009), 9 pages. 
+             *  https://doi.org/10.1145/1531326.1531373 
+             *  (Access By: https://www.cs.huji.ac.il/~danix/mvclone/files/mvc-final-opt.pdf)
+             */
             Vertex M, N;
             M = getWrappedPolygonVertex(polygon, i + polygon.vertexCount - 1);
             A = getWrappedPolygonVertex(polygon, i);
@@ -541,6 +550,7 @@ vec3 texturePolkadot(vec2 texCoord)
             return dotColor;
         }
     }
+    return vec3(1.0, 1.0, 1.0);
 #endif 
     return color;
 }
@@ -550,30 +560,22 @@ vec3 textureVoronoi(vec2 texCoord)
     // This implementation is global, adding a set number of cells at random to the whole texture.
     prngSeed = globalPrngSeed; // Need to reseed here to play nicely with anti-aliasing
     const int nVoronoiCells = 15;
-    vec2 VoronoiPoints[nVoronoiCells];
-    vec3 colors[nVoronoiCells];
-    for (int i = 0; i < nVoronoiCells; i++) {
-        VoronoiPoints[i] = vec2(prngUniform01(), prngUniform01());
-        colors[i] = randomColor();
-    }
-    for (int k = 0; k < nVoronoiCells; k++) {
-        float dk = length(VoronoiPoints[k] - texCoord);
-        bool inK = true;
-        for (int j = 0; j < nVoronoiCells; j++) {
-            if (j != k) {
-                float dj = length(VoronoiPoints[j] - texCoord);
-                if (dk > dj) {
-                    inK = false;
-                    break;
-                }
-            }
-        }
-        if (inK) {
-            return colors[k];
-        }
-    }
-    
+
 #ifdef SOLUTION_TEXTURING
+    vec2 VoronoiPoints;
+    vec3 colors;
+    float mind = 100.;
+    vec3 minColor = vec3(0., 0., 0.);
+    for (int i = 0; i < nVoronoiCells; i++) {
+        VoronoiPoints = vec2(prngUniform01(), prngUniform01());
+        colors = randomColor();
+        float nowd = length(VoronoiPoints - texCoord);
+        if (nowd < mind) {
+            mind = nowd;
+            minColor = colors;
+        }
+    }
+    return minColor;
 #endif
     return vec3(0.0, 0.0, 1.0); 
 }
