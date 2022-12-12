@@ -1,9 +1,9 @@
-//#define SOLUTION_LIGHT
-//#define SOLUTION_BOUNCE
-//#define SOLUTION_THROUGHPUT
-//#define SOLUTION_HALTON
-//#define SOLUTION_AA
-//#define SOLUTION_IS
+#define SOLUTION_LIGHT
+#define SOLUTION_BOUNCE
+#define SOLUTION_THROUGHPUT
+#define SOLUTION_HALTON
+#define SOLUTION_AA
+#define SOLUTION_IS
 //#define SOLUTION_MB
 
 precision highp float;
@@ -12,6 +12,9 @@ precision highp float;
 
 struct Material {
 	#ifdef SOLUTION_LIGHT
+	bool isLightSource;
+	vec3 color;
+	float intensity;
 	#endif
 	vec3 diffuse;
 	vec3 specular;
@@ -36,6 +39,7 @@ const int sphereCount = 4;
 const int planeCount = 4;
 const int emittingSphereCount = 2;
 #ifdef SOLUTION_BOUNCE
+const int maxPathLength = 2;
 #else
 const int maxPathLength = 1;
 #endif
@@ -68,6 +72,9 @@ struct DirectionSample {
 HitInfo getEmptyHit() {
 	Material emptyMaterial;
 	#ifdef SOLUTION_LIGHT
+	emptyMaterial.isLightSource = false;
+	emptyMaterial.color = vec3(0.0);
+	emptyMaterial.intensity = 0.0;
 	#endif
 	emptyMaterial.diffuse = vec3(0.0);
 	emptyMaterial.specular = vec3(0.0);
@@ -175,10 +182,36 @@ int prime(const int index) {
 }
 
 #ifdef SOLUTION_HALTON
+int prngSeed = 5;
+const int prngMult = 174763; // This is a prime
+const float maxUint = 2147483647.0; // Max magnitude of a 32-bit signed integer
+
+float prngUniform01()
+{
+    // Very basic linear congruential generator (https://en.wikipedia.org/wiki/Lehmer_random_number_generator)
+    // Using signed integers (as some WebGL doesn't support unsigned).
+    prngSeed *= prngMult;
+    // Now the seed is a "random" value between -2147483648 and 2147483647. 
+    // Convert to float and scale to the 0,1 range.
+    float val = float(prngSeed) / maxUint;
+    return 0.5 + (val * 0.5);
+}
 #endif
 
 float halton(const int sampleIndex, const int dimensionIndex) {
 	#ifdef SOLUTION_HALTON
+	float e = 1.0, h = 0.0, b = float(prime(mod(dimensionIndex, maxDimensionCount)));
+	int bint = prime(mod(dimensionIndex, maxDimensionCount)), i = sampleIndex;
+	const int t = 10000;
+	for (int j = 0; j < t; j++) {
+		if (i == 0) {
+			break;
+		}
+		e /= b;
+		h += e * float(mod(i, bint));
+		i = i / bint;
+	}
+	return fract(h + prngUniform01());
 	#else
 	// Put your implementation of halton in the #ifdef above 
 	return 0.0;
@@ -192,6 +225,7 @@ uniform int baseSampleIndex;
 // Returns a well-distributed number in (0,1) for the dimension dimensionIndex
 float sample(const int dimensionIndex) {
 	#ifdef SOLUTION_HALTON
+	return halton(baseSampleIndex, dimensionIndex);
 	#else
 	// Use the Halton sequence for variance reduction in the #ifdef above
 	return uniformRandom();
@@ -224,6 +258,11 @@ vec3 sample3(const int dimensionIndex) {
 
 vec3 getEmission(const Material material, const vec3 normal) {
 	#ifdef SOLUTION_LIGHT
+	if (material.isLightSource) {
+		return material.intensity * material.color;
+	} else {
+		return vec3(0.0);
+	}
 	#else
 	// This is wrong. It just returns the diffuse color so that you see something to be sure it is working.
 	return material.diffuse;
@@ -232,6 +271,9 @@ vec3 getEmission(const Material material, const vec3 normal) {
 
 vec3 getReflectance(const Material material, const vec3 normal, const vec3 inDirection, const vec3 outDirection) {
 	#ifdef SOLUTION_THROUGHPUT
+	vec3 kd = material.diffuse, ks = material.specular;
+	float n = material.glossiness;
+	return kd / M_PI + ks * (n + 2.0) / 2.0 / M_PI * pow(max(0.0, dot(normalize(reflect(inDirection, normal)), normalize(outDirection))), n);
 	#else
 	return vec3(1.0);
 	#endif
@@ -239,6 +281,8 @@ vec3 getReflectance(const Material material, const vec3 normal, const vec3 inDir
 
 vec3 getGeometricTerm(const Material material, const vec3 normal, const vec3 inDirection, const vec3 outDirection) {
 	#ifdef SOLUTION_THROUGHPUT
+	return vec3(dot(normalize(normal), normalize(outDirection)));
+	//return vec3(1.0);
 	#else
 	return vec3(1.0);
 	#endif
@@ -253,6 +297,9 @@ vec3 sphericalToEuclidean(float theta, float phi) {
 
 vec3 getRandomDirection(const int dimensionIndex) {
 	#ifdef SOLUTION_BOUNCE
+	vec2 ksi = sample2(dimensionIndex);
+	vec3 wi = sphericalToEuclidean(acos(2.0 * ksi.x - 1.0), ksi.y * 2.0 * M_PI);
+	return normalize(wi);
 	#else
 	// Put your code to compute a random direction in 3D in the #ifdef above
 	return vec3(0);
@@ -359,6 +406,25 @@ mat3 transpose(mat3 m) {
 // Might be useful for importance sampling BRDF / the geometric term.
 mat3 makeLocalFrame(const vec3 normal) {
 	#ifdef SOLUTION_IS
+	float alpha = acos(dot(normalize(normal.yz), vec2(0., 1.)));
+	float zeta = acos(dot(normalize(normal.xy), vec2(0., 1.)));
+	mat3 X = mat3(
+		1., 0., 0.,
+		0., cos(alpha), sin(alpha),
+		0., -sin(alpha), cos(alpha)
+	);
+	mat3 Z = mat3(
+		cos(zeta), sin(zeta), 0.,
+		-sin(zeta), cos(zeta), 0.,
+		0., 0., 1.
+	);
+	return Z * X;
+	return mat3(
+		cos(zeta), -sin(zeta) * cos(alpha), sin(zeta) * sin(alpha),
+		sin(zeta), cos(zeta) * cos(alpha), -sin(alpha) * cos(zeta),
+		0., sin(alpha), cos(alpha)
+	);
+	return mat3(1.0);
 	#else
 	return mat3(1.0);
 	#endif
@@ -368,6 +434,13 @@ DirectionSample sampleDirection(const vec3 normal, const int dimensionIndex) {
 	DirectionSample result;
 
 	#ifdef SOLUTION_IS
+	vec2 ksi = sample2(dimensionIndex);
+	vec3 dir = makeLocalFrame(normal) * normalize(vec3(cos(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sin(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sqrt(1. - ksi.x)));
+
+	result.direction = dir;
+	float cosi = dot(dir, normal);
+	float sini = sin(acos(cosi));
+	result.probability = cosi * sini / M_PI;
 	#else
 	// Put yout code to compute Importance Sampling in the #ifdef above 
 	result.direction = getRandomDirection(dimensionIndex);	
@@ -393,23 +466,31 @@ vec3 samplePath(const Scene scene, const Ray initialRay) {
 		Ray outgoingRay;
 		DirectionSample directionSample;
 		#ifdef SOLUTION_BOUNCE
+		directionSample = sampleDirection(hitInfo.normal, PATH_SAMPLE_DIMENSION + 2 * i);
+		outgoingRay.origin = hitInfo.position;
+		outgoingRay.direction = directionSample.direction;
 		#else
 		// Put your code to compute the next ray in the #ifdef above
 		#endif
 
 		#ifdef SOLUTION_THROUGHPUT
+		//throughput = result;
+		throughput *= getGeometricTerm(hitInfo.material, hitInfo.normal, incomingRay.direction, outgoingRay.direction);
+		throughput *= getReflectance(hitInfo.material, hitInfo.normal, incomingRay.direction, outgoingRay.direction);
 		#else
 		// Compute the proper throughput in the #ifdef above 
 		throughput *= 0.1;
 		#endif
 
 		#ifdef SOLUTION_IS
+		throughput /= directionSample.probability;
 		#else
 		// Without Importance Sampling, there is nothing to do here. 
 		// Put your Importance Sampling code in the #ifdef above
 		#endif
 
 		#ifdef SOLUTION_BOUNCE
+		incomingRay = outgoingRay;
 		#else
 		// Put some handling of the next and the current ray in the #ifdef above
 		#endif
@@ -440,6 +521,24 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 	initRandomSequence();
 
 	#ifdef SOLUTION_AA
+	vec2 dir[9], sampleCoord = vec2(0.0);
+	dir[0] = vec2(-1, -1);
+	dir[1] = vec2(-1,  0);
+	dir[2] = vec2(-1,  1);
+	dir[3] = vec2( 0, -1);
+	dir[4] = vec2( 0,  1);
+	dir[5] = vec2( 1, -1);
+	dir[6] = vec2( 1,  0);
+	dir[7] = vec2( 1,  1);
+	dir[8] = vec2( 0,  0);
+	vec3 color = vec3(0.0);
+	float maxx = float(resolution.x), maxy = float(resolution.y), cnt = 0.;
+	for (int i = 0; i < 9; i++) {
+		sampleCoord = (3. * fragCoord + 1. + dir[i]) / 3.;
+		color += samplePath(scene, getFragCoordRay(sampleCoord));
+		cnt += 1.;
+	}
+	return color / cnt;
 	#else  	
 	// Put your anti-aliasing code in the #ifdef above
 	vec2 sampleCoord = fragCoord;
@@ -454,6 +553,9 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[0].radius = 2.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
+	scene.spheres[0].material.isLightSource = true;
+	scene.spheres[0].material.color = vec3(0.9, 0.9, 0.5);
+	scene.spheres[0].material.intensity = 150.0;
 #endif
 	scene.spheres[0].material.diffuse = vec3(0.0);
 	scene.spheres[0].material.specular = vec3(0.0);
@@ -466,6 +568,9 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[1].radius = 1.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
+	scene.spheres[1].material.isLightSource = true;
+	scene.spheres[1].material.color = vec3(0.8, 0.3, 0.1);
+	scene.spheres[1].material.intensity = 150.0;
 #endif
 	scene.spheres[1].material.diffuse = vec3(0.0);
 	scene.spheres[1].material.specular = vec3(0.0);
@@ -478,6 +583,9 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[2].radius = 3.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
+	scene.spheres[2].material.isLightSource = false;
+	scene.spheres[2].material.color = vec3(0.0);
+	scene.spheres[2].material.intensity = 0.0;
 #endif  
 	scene.spheres[2].material.diffuse = vec3(0.2, 0.5, 0.8);
 	scene.spheres[2].material.specular = vec3(0.8);
@@ -490,6 +598,9 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[3].radius = 1.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
+	scene.spheres[3].material.isLightSource = false;
+	scene.spheres[3].material.color = vec3(0.0);
+	scene.spheres[3].material.intensity = 0.0;
 #endif  
 	scene.spheres[3].material.diffuse = vec3(0.9, 0.8, 0.8);
 	scene.spheres[3].material.specular = vec3(1.0);
@@ -501,7 +612,10 @@ void loadScene1(inout Scene scene) {
 	scene.planes[0].normal = vec3(0, 1, 0);
 	scene.planes[0].d = 4.5;
 	// Set the value of the missing property in the ifdef below 
-#ifdef SOLUTION_LIGHT    
+#ifdef SOLUTION_LIGHT   
+	scene.planes[0].material.isLightSource = false;
+	scene.planes[0].material.color = vec3(0.0);
+	scene.planes[0].material.intensity = 0.0; 
 #endif
 	scene.planes[0].material.diffuse = vec3(0.8);
 	scene.planes[0].material.specular = vec3(0);
@@ -511,6 +625,9 @@ void loadScene1(inout Scene scene) {
 	scene.planes[1].d = 18.5;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
+	scene.planes[1].material.isLightSource = false;
+	scene.planes[1].material.color = vec3(0.0);
+	scene.planes[1].material.intensity = 0.0;
 #endif
 	scene.planes[1].material.diffuse = vec3(0.9, 0.6, 0.3);
 	scene.planes[1].material.specular = vec3(0.02);
@@ -520,6 +637,9 @@ void loadScene1(inout Scene scene) {
 	scene.planes[2].d = 10.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
+	scene.planes[2].material.isLightSource = false;
+	scene.planes[2].material.color = vec3(0.0);
+	scene.planes[2].material.intensity = 0.0;
 #endif
 	
 	scene.planes[2].material.diffuse = vec3(0.2);
@@ -530,6 +650,9 @@ void loadScene1(inout Scene scene) {
 	scene.planes[3].d = 10.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
+	scene.planes[3].material.isLightSource = false;
+	scene.planes[3].material.color = vec3(0.0);
+	scene.planes[3].material.intensity = 0.0;
 #endif
 	
 	scene.planes[3].material.diffuse = vec3(0.2);
