@@ -1,8 +1,8 @@
 #define SOLUTION_LIGHT
 #define SOLUTION_BOUNCE
 #define SOLUTION_THROUGHPUT
-#define SOLUTION_HALTON
-#define SOLUTION_AA
+//#define SOLUTION_HALTON
+//#define SOLUTION_AA
 #define SOLUTION_IS
 //#define SOLUTION_MB
 
@@ -406,25 +406,16 @@ mat3 transpose(mat3 m) {
 // Might be useful for importance sampling BRDF / the geometric term.
 mat3 makeLocalFrame(const vec3 normal) {
 	#ifdef SOLUTION_IS
-	float alpha = acos(dot(normalize(normal.yz), vec2(0., 1.)));
-	float zeta = acos(dot(normalize(normal.xy), vec2(0., 1.)));
-	mat3 X = mat3(
-		1., 0., 0.,
-		0., cos(alpha), sin(alpha),
-		0., -sin(alpha), cos(alpha)
-	);
-	mat3 Z = mat3(
-		cos(zeta), sin(zeta), 0.,
-		-sin(zeta), cos(zeta), 0.,
-		0., 0., 1.
-	);
-	return Z * X;
-	return mat3(
-		cos(zeta), -sin(zeta) * cos(alpha), sin(zeta) * sin(alpha),
-		sin(zeta), cos(zeta) * cos(alpha), -sin(alpha) * cos(zeta),
-		0., sin(alpha), cos(alpha)
-	);
-	return mat3(1.0);
+	vec3 vr = normal, v = vec3(0., 0., 1.);
+    vec3 k = -normalize(cross(v, vr));
+    float theta = acos(dot(v, vr));
+    mat3 K = mat3(
+        0., -k.z, k.y,
+        k.z, 0., -k.x,
+        -k.y, k.x, 0.
+    );
+    mat3 R = mat3(1.0) + sin(theta) * K + (1. - cos(theta)) * transpose(K) * K;
+	return R;
 	#else
 	return mat3(1.0);
 	#endif
@@ -483,7 +474,7 @@ vec3 samplePath(const Scene scene, const Ray initialRay) {
 		#endif
 
 		#ifdef SOLUTION_IS
-		throughput /= directionSample.probability;
+		//throughput /= directionSample.probability;
 		#else
 		// Without Importance Sampling, there is nothing to do here. 
 		// Put your Importance Sampling code in the #ifdef above
