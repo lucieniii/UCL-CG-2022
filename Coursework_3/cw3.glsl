@@ -407,6 +407,9 @@ mat3 transpose(mat3 m) {
 mat3 makeLocalFrame(const vec3 normal) {
 	#ifdef SOLUTION_IS
 	vec3 vr = normal, v = vec3(0., 0., 1.);
+	if (all(lessThan(abs(normal - v), vec3(0.001)))) {
+		return mat3(1.0);
+	}
     vec3 k = -normalize(cross(v, vr));
     float theta = acos(dot(v, vr));
     mat3 K = mat3(
@@ -414,7 +417,12 @@ mat3 makeLocalFrame(const vec3 normal) {
         k.z, 0., -k.x,
         -k.y, k.x, 0.
     );
-    mat3 R = mat3(1.0) + sin(theta) * K + (1. - cos(theta)) * transpose(K) * K;
+	mat3 K2 = mat3(
+        k.x * k.x, k.x * k.y, k.x * k.z,
+        k.y * k.x, k.y * k.y, k.y * k.z,
+        k.z * k.x, k.z * k.y, k.z * k.z
+    );
+    mat3 R = mat3(1.0) * cos(theta) + sin(theta) * K + (1. - cos(theta)) * K2;
 	return R;
 	#else
 	return mat3(1.0);
@@ -426,12 +434,15 @@ DirectionSample sampleDirection(const vec3 normal, const int dimensionIndex) {
 
 	#ifdef SOLUTION_IS
 	vec2 ksi = sample2(dimensionIndex);
-	vec3 dir = makeLocalFrame(normal) * normalize(vec3(cos(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sin(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sqrt(1. - ksi.x)));
-
+	//vec3 dir = makeLocalFrame(normal) * normalize(vec3(cos(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sin(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sqrt(1. - ksi.x)));
+	vec3 wi = normalize(sphericalToEuclidean(acos(sqrt(1. - ksi.x)), ksi.y * 2.0 * M_PI));
+	result.probability = wi.z / M_PI;
+	vec3 dir = makeLocalFrame(normal) * wi;
 	result.direction = dir;
+	//result.direction = getRandomDirection(dimensionIndex);	
 	float cosi = dot(dir, normal);
 	float sini = sin(acos(cosi));
-	result.probability = cosi * sini / M_PI;
+	
 	#else
 	// Put yout code to compute Importance Sampling in the #ifdef above 
 	result.direction = getRandomDirection(dimensionIndex);	
@@ -474,7 +485,7 @@ vec3 samplePath(const Scene scene, const Ray initialRay) {
 		#endif
 
 		#ifdef SOLUTION_IS
-		//throughput /= directionSample.probability;
+		throughput /= directionSample.probability * 4.0 * M_PI;
 		#else
 		// Without Importance Sampling, there is nothing to do here. 
 		// Put your Importance Sampling code in the #ifdef above
