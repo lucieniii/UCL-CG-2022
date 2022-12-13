@@ -525,24 +525,18 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 	initRandomSequence();
 
 	#ifdef SOLUTION_AA
-	vec2 dir[9], sampleCoord = vec2(0.0);
-	dir[0] = vec2(-1, -1);
-	dir[1] = vec2(-1,  0);
-	dir[2] = vec2(-1,  1);
-	dir[3] = vec2( 0, -1);
-	dir[4] = vec2( 0,  1);
-	dir[5] = vec2( 1, -1);
-	dir[6] = vec2( 1,  0);
-	dir[7] = vec2( 1,  1);
-	dir[8] = vec2( 0,  0);
-	vec3 color = vec3(0.0);
-	float maxx = float(resolution.x), maxy = float(resolution.y), cnt = 0.;
-	for (int i = 0; i < 9; i++) {
-		sampleCoord = (3. * fragCoord + 1. + dir[i]) / 3.;
-		color += samplePath(scene, getFragCoordRay(sampleCoord));
-		cnt += 1.;
-	}
-	return color / cnt;
+	int samplesPerSide = 3;
+	vec2 index = floor(sample2(ANTI_ALIAS_SAMPLE_DIMENSION) * float(samplesPerSide));
+	// to find the offset needed to move from top left coordinate to middle coordinate,
+	// we first calculate the side length of each sample
+	float sideLengthPerSample = 1.0 / float(samplesPerSide);
+	// then we move the top left coordinate to middle by adding half of side length
+	vec2 coord = index + (sideLengthPerSample / 2.0);
+	// then we find the offset needed to move fragCoord to the sample coordinate,
+	// we have assumed the fragCoord is at the middle of a 1x1 pixels (0.5, 0.5)
+	vec2 offset = coord - 0.5;
+	// apply to offset to the sample coordinate
+	vec2 sampleCoord = fragCoord + offset;
 	#else  	
 	// Put your anti-aliasing code in the #ifdef above
 	vec2 sampleCoord = fragCoord;
