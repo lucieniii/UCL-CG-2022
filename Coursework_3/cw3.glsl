@@ -1,10 +1,10 @@
 #define SOLUTION_LIGHT
 #define SOLUTION_BOUNCE
 #define SOLUTION_THROUGHPUT
-//#define SOLUTION_HALTON
-//#define SOLUTION_AA
+#define SOLUTION_HALTON
+#define SOLUTION_AA
 #define SOLUTION_IS
-//#define SOLUTION_MB
+#define SOLUTION_MB
 
 precision highp float;
 
@@ -24,6 +24,7 @@ struct Material {
 struct Sphere {
 	vec3 position;
 #ifdef SOLUTION_MB
+	vec3 motion;
 #endif
 	float radius;
 	Material material;
@@ -310,6 +311,7 @@ vec3 getRandomDirection(const int dimensionIndex) {
 HitInfo intersectSphere(const Ray ray, Sphere sphere, const float tMin, const float tMax) {
 
 #ifdef SOLUTION_MB
+	sphere.position += sphere.motion * 0.001 * float(baseSampleIndex);
 #endif
 	
 	vec3 to_sphere = ray.origin - sphere.position;
@@ -564,6 +566,7 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[0].material.glossiness = 10.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_MB
+	scene.spheres[0].motion = vec3(0.);
 #endif
 	
 	scene.spheres[1].position = vec3(-8, 4, -13);
@@ -579,6 +582,7 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[1].material.glossiness = 10.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_MB
+	scene.spheres[1].motion = vec3(0.);
 #endif
 	
 	scene.spheres[2].position = vec3(-2, -2, -12);
@@ -594,6 +598,7 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[2].material.glossiness = 40.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_MB
+	scene.spheres[2].motion = vec3(-3., 0., 3.);
 #endif
 	
 	scene.spheres[3].position = vec3(3, -3.5, -14);
@@ -609,6 +614,7 @@ void loadScene1(inout Scene scene) {
 	scene.spheres[3].material.glossiness = 10.0;
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_MB
+	scene.spheres[3].motion = vec3(2., 4., 1.);
 #endif
 	
 	scene.planes[0].normal = vec3(0, 1, 0);
