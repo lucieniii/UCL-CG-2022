@@ -1,10 +1,10 @@
-#define SOLUTION_LIGHT
-#define SOLUTION_BOUNCE
-#define SOLUTION_THROUGHPUT
-#define SOLUTION_HALTON
-#define SOLUTION_AA
-#define SOLUTION_IS
-#define SOLUTION_MB
+//#define SOLUTION_LIGHT
+//#define SOLUTION_BOUNCE
+//#define SOLUTION_THROUGHPUT
+//#define SOLUTION_HALTON
+//#define SOLUTION_AA
+//#define SOLUTION_IS
+//#define SOLUTION_MB
 
 precision highp float;
 
@@ -13,8 +13,8 @@ precision highp float;
 struct Material {
 	#ifdef SOLUTION_LIGHT
 	bool isLightSource;
-	vec3 color;
-	float intensity;
+	vec3 intensity;
+	float emissiveness;
 	#endif
 	vec3 diffuse;
 	vec3 specular;
@@ -74,8 +74,8 @@ HitInfo getEmptyHit() {
 	Material emptyMaterial;
 	#ifdef SOLUTION_LIGHT
 	emptyMaterial.isLightSource = false;
-	emptyMaterial.color = vec3(0.0);
-	emptyMaterial.intensity = 0.0;
+	emptyMaterial.intensity = vec3(0.0);
+	emptyMaterial.emissiveness = 0.0;
 	#endif
 	emptyMaterial.diffuse = vec3(0.0);
 	emptyMaterial.specular = vec3(0.0);
@@ -213,6 +213,12 @@ float halton(const int sampleIndex, const int dimensionIndex) {
 		i = i / bint;
 	}
 	return fract(h + prngUniform01());
+	/*
+	 * The offset should be irrelevant with the time of sampling,
+	 * which means at the same dimension and pixel, the offset should be the same.
+	 * So, I borrowed the linear congruential generator has been used in CW2
+	 * to generate the same random number sequences among different samples (by keeping the seed as a fixed value).
+	 */
 	#else
 	// Put your implementation of halton in the #ifdef above 
 	return 0.0;
@@ -259,8 +265,14 @@ vec3 sample3(const int dimensionIndex) {
 
 vec3 getEmission(const Material material, const vec3 normal) {
 	#ifdef SOLUTION_LIGHT
+	/*
+	 * The RGB values stored in the computer are not simply linearly related to 
+	 * the output power of the monitor, but are a power function. The exponent of 
+	 * this function is called the Gamma value, typically 2.2, and this 
+	 * conversion process, called Gamma correction.
+	 */
 	if (material.isLightSource) {
-		return material.intensity * material.color;
+		return material.intensity * material.emissiveness;
 	} else {
 		return vec3(0.0);
 	}
@@ -272,6 +284,7 @@ vec3 getEmission(const Material material, const vec3 normal) {
 
 vec3 getReflectance(const Material material, const vec3 normal, const vec3 inDirection, const vec3 outDirection) {
 	#ifdef SOLUTION_THROUGHPUT
+	// Calculate the reflectance by Physically-correct Phong.
 	vec3 kd = material.diffuse, ks = material.specular;
 	float n = material.glossiness;
 	return kd / M_PI + ks * (n + 2.0) / 2.0 / M_PI * pow(max(0.0, dot(normalize(reflect(inDirection, normal)), normalize(outDirection))), n);
@@ -282,8 +295,11 @@ vec3 getReflectance(const Material material, const vec3 normal, const vec3 inDir
 
 vec3 getGeometricTerm(const Material material, const vec3 normal, const vec3 inDirection, const vec3 outDirection) {
 	#ifdef SOLUTION_THROUGHPUT
+	/* 
+	 * Simply calculate the cosine value between normal and outDirection,
+	 * then put the value in a vec3 to scale the R, G and B.
+	 */ 
 	return vec3(dot(normalize(normal), normalize(outDirection)));
-	//return vec3(1.0);
 	#else
 	return vec3(1.0);
 	#endif
@@ -298,9 +314,20 @@ vec3 sphericalToEuclidean(float theta, float phi) {
 
 vec3 getRandomDirection(const int dimensionIndex) {
 	#ifdef SOLUTION_BOUNCE
+	/*
+	 * Two Parts:
+	 * 1. Generate two random numbers between 0 and 1;
+	 * 2. Convert these two numbers to 3D coordinates.
+	 */
 	vec2 ksi = sample2(dimensionIndex);
 	vec3 wi = sphericalToEuclidean(acos(2.0 * ksi.x - 1.0), ksi.y * 2.0 * M_PI);
-	return normalize(wi);
+
+	// Set testwi to true to test.
+	bool testwi = false;
+	if (testwi && abs(length(wi) - 1.) > 0.0001) {
+		return vec3(0.);
+	}
+	return wi;
 	#else
 	// Put your code to compute a random direction in 3D in the #ifdef above
 	return vec3(0);
@@ -311,7 +338,14 @@ vec3 getRandomDirection(const int dimensionIndex) {
 HitInfo intersectSphere(const Ray ray, Sphere sphere, const float tMin, const float tMax) {
 
 #ifdef SOLUTION_MB
-	sphere.position += sphere.motion * 0.001 * float(baseSampleIndex);
+	/*
+	 * Set the speed of moving.
+	 * For 1000  samples: use speed = 0.001;
+	 * For 10000 samples: use speed = 0.0001;
+	 * ...
+	 */
+	float speed = 0.001;
+	sphere.position += sphere.motion * speed * float(baseSampleIndex);
 #endif
 	
 	vec3 to_sphere = ray.origin - sphere.position;
@@ -431,20 +465,97 @@ mat3 makeLocalFrame(const vec3 normal) {
 	#endif
 }
 
-DirectionSample sampleDirection(const vec3 normal, const int dimensionIndex) {
+DirectionSample sampleDirection(const vec3 normal, const int dimensionIndex, const Scene scene, const vec3 samplePosition) {
 	DirectionSample result;
 
 	#ifdef SOLUTION_IS
+	/*
+	 * Importance sampling should give more chance to the rays that have higher possibility to reach the light source.
+	 *
+	 * For the image using importance sampling, it converges faster and have a smoother image.
+	 */
+	///*
 	vec2 ksi = sample2(dimensionIndex);
-	//vec3 dir = makeLocalFrame(normal) * normalize(vec3(cos(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sin(2.0 * M_PI * ksi.y) * sqrt(ksi.x), sqrt(1. - ksi.x)));
 	vec3 wi = normalize(sphericalToEuclidean(acos(sqrt(1. - ksi.x)), ksi.y * 2.0 * M_PI));
 	result.probability = wi.z / M_PI;
 	vec3 dir = makeLocalFrame(normal) * wi;
 	result.direction = dir;
-	//result.direction = getRandomDirection(dimensionIndex);	
-	float cosi = dot(dir, normal);
-	float sini = sin(acos(cosi));
+	//*/
 	
+	/*
+	 * Below is the implementation of light source sampling.
+	 * If we try to look at a light source sphere from a samplePosition with no block, 
+	 * the rays from the sphere can become a cone. So, it can be changed from sampling a semisphere 
+	 * to sampling a cone.
+	 * To involve the emissiveness, I use it as weight. The sphere which has bigger emissiveness will has
+	 * a higher chance to be sampled from.
+	 * However, this method forgets the rays need times of relection. 
+	 * To solve this, we can give semi-sphere sampling some chances.
+	 * But combining semi-sphere sampling didn't give a better result: the image become too bright.
+	 * The reason may be I can't exclude the cones of the light sources from the semi-shpere and the pdf is hard to calculate.
+	 * So I gived up the plan, I think it is better and easier to calculate the two kinds of contribution in the samplePath loop seperately,
+	 * and then add them together as the result.
+	 */
+	
+	/*
+	// This light source sampling code performs well in this scene.
+	float weights[3];
+	weights[0] = 0.0;
+    weights[1] = scene.spheres[0].material.emissiveness / (scene.spheres[0].material.emissiveness + scene.spheres[1].material.emissiveness);
+    weights[2] = 1.;
+	float w = sample(TIME_SAMPLE_DIMENSION);
+	if (w <= weights[1]) {
+		vec2 ksi = sample2(dimensionIndex);
+		Sphere sphere = scene.spheres[0];
+		float maxCos = sqrt(1.0 - pow(sphere.radius / length(sphere.position - samplePosition), 2.));
+		float theta = acos(1.0 - ksi.x + ksi.x * maxCos);
+		float phi = 2.0 * M_PI * ksi.y;
+		result.direction = makeLocalFrame(normalize(sphere.position - samplePosition)) * normalize(sphericalToEuclidean(theta, phi));
+		result.probability = (weights[1] - weights[0]) * 1. / (2. * M_PI * (1. - maxCos));
+	} else {
+		vec2 ksi = sample2(dimensionIndex);
+		Sphere sphere = scene.spheres[1];
+		float maxCos = sqrt(1.0 - pow(sphere.radius / length(sphere.position - samplePosition), 2.));
+		float theta = acos(1.0 - ksi.x + ksi.x * maxCos);
+		float phi = 2.0 * M_PI * ksi.y;
+		result.direction = makeLocalFrame(normalize(sphere.position - samplePosition)) * normalize(sphericalToEuclidean(theta, phi));
+		result.probability = (weights[2] - weights[1]) * 1. / (2. * M_PI * (1. - maxCos));
+	}
+	*/
+
+	/*
+	// In this scene, this semi-shpere combined version doesn't perform well.
+	// It is too bright and noisy.
+	// Just put the code here.
+	float weights[3];
+	weights[0] = 0.1;
+    weights[1] = weights[0] + (1. - weights[0]) * scene.spheres[0].material.emissiveness / (scene.spheres[0].material.emissiveness + scene.spheres[1].material.emissiveness);
+    weights[2] = 1.;
+	float w = sample(TIME_SAMPLE_DIMENSION);
+	if (w <= weights[0]) {
+		vec2 ksi = sample2(dimensionIndex);
+		vec3 wi = normalize(sphericalToEuclidean(acos(sqrt(1. - ksi.x)), ksi.y * 2.0 * M_PI));
+		result.probability = wi.z / M_PI * weights[0];
+		vec3 dir = makeLocalFrame(normal) * wi;
+		result.direction = dir;
+	} else if (w <= weights[1]) {
+		vec2 ksi = sample2(dimensionIndex);
+		Sphere sphere = scene.spheres[0];
+		float maxCos = sqrt(1.0 - pow(sphere.radius / length(sphere.position - samplePosition), 2.));
+		float theta = acos(1.0 - ksi.x + ksi.x * maxCos);
+		float phi = 2.0 * M_PI * ksi.y;
+		result.direction = makeLocalFrame(normalize(sphere.position - samplePosition)) * normalize(sphericalToEuclidean(theta, phi));
+		result.probability = (weights[1] - weights[0]) * 1. / (2. * M_PI * (1. - maxCos));
+	} else {
+		vec2 ksi = sample2(dimensionIndex);
+		Sphere sphere = scene.spheres[1];
+		float maxCos = sqrt(1.0 - pow(sphere.radius / length(sphere.position - samplePosition), 2.));
+		float theta = acos(1.0 - ksi.x + ksi.x * maxCos);
+		float phi = 2.0 * M_PI * ksi.y;
+		result.direction = makeLocalFrame(normalize(sphere.position - samplePosition)) * normalize(sphericalToEuclidean(theta, phi));
+		result.probability = (weights[2] - weights[1]) * 1. / (2. * M_PI * (1. - maxCos));
+	}
+	*/
 	#else
 	// Put yout code to compute Importance Sampling in the #ifdef above 
 	result.direction = getRandomDirection(dimensionIndex);	
@@ -470,7 +581,7 @@ vec3 samplePath(const Scene scene, const Ray initialRay) {
 		Ray outgoingRay;
 		DirectionSample directionSample;
 		#ifdef SOLUTION_BOUNCE
-		directionSample = sampleDirection(hitInfo.normal, PATH_SAMPLE_DIMENSION + 2 * i);
+		directionSample = sampleDirection(hitInfo.normal, PATH_SAMPLE_DIMENSION + 2 * i, scene, hitInfo.position);
 		outgoingRay.origin = hitInfo.position;
 		outgoingRay.direction = directionSample.direction;
 		#else
@@ -478,7 +589,10 @@ vec3 samplePath(const Scene scene, const Ray initialRay) {
 		#endif
 
 		#ifdef SOLUTION_THROUGHPUT
-		//throughput = result;
+		/*
+		 * Scale throughput by the product of GeometricTerm and Reflectance
+		 * , so that it can be use in the next loop to calculate the e Monte Carlo integral.
+		 */
 		throughput *= getGeometricTerm(hitInfo.material, hitInfo.normal, incomingRay.direction, outgoingRay.direction);
 		throughput *= getReflectance(hitInfo.material, hitInfo.normal, incomingRay.direction, outgoingRay.direction);
 		#else
@@ -525,18 +639,23 @@ vec3 colorForFragment(const Scene scene, const vec2 fragCoord) {
 	initRandomSequence();
 
 	#ifdef SOLUTION_AA
-	int samplesPerSide = 3;
-	vec2 index = floor(sample2(ANTI_ALIAS_SAMPLE_DIMENSION) * float(samplesPerSide));
-	// to find the offset needed to move from top left coordinate to middle coordinate,
-	// we first calculate the side length of each sample
-	float sideLengthPerSample = 1.0 / float(samplesPerSide);
-	// then we move the top left coordinate to middle by adding half of side length
-	vec2 coord = index + (sideLengthPerSample / 2.0);
-	// then we find the offset needed to move fragCoord to the sample coordinate,
-	// we have assumed the fragCoord is at the middle of a 1x1 pixels (0.5, 0.5)
-	vec2 offset = coord - 0.5;
-	// apply to offset to the sample coordinate
-	vec2 sampleCoord = fragCoord + offset;
+	/*
+	 * Implement the 3x3 box filter:
+	 *  +---+---+---+       +---+---+---+
+	 *  |           |		| * | * | * |
+	 *  +           +		+---*---+---+
+	 *  |     o     |  -->	| * | o | * |
+	 *  +           +		+---*---+---+
+	 *  |           |		| * | * | * |
+	 *  +---*---+---+		+---*---+---+
+	 * Assume we have a pixel, then we wrap the pixel by a square which the side length is 1.
+	 * (The pixel is the center of the square.) After that we devide the square in to 3x3=9 small squares.
+	 * Just as the square above, 'o' represents the pixel, and '*' are the centers of the small squares.
+	 * We randomly choose one of the 'o' and '*'s by equal chance as the sampleCoord.
+	 */
+	int boxSize = 3;
+	vec2 idx = floor(sample2(ANTI_ALIAS_SAMPLE_DIMENSION) * float(boxSize));
+	vec2 sampleCoord = fragCoord + idx + 0.5 / float(boxSize) - 0.5;
 	#else  	
 	// Put your anti-aliasing code in the #ifdef above
 	vec2 sampleCoord = fragCoord;
@@ -552,8 +671,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
 	scene.spheres[0].material.isLightSource = true;
-	scene.spheres[0].material.color = vec3(0.9, 0.9, 0.5);
-	scene.spheres[0].material.intensity = 150.0;
+	scene.spheres[0].material.intensity = vec3(0.9, 0.9, 0.5);
+	scene.spheres[0].material.emissiveness = 150.0;
 #endif
 	scene.spheres[0].material.diffuse = vec3(0.0);
 	scene.spheres[0].material.specular = vec3(0.0);
@@ -568,8 +687,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
 	scene.spheres[1].material.isLightSource = true;
-	scene.spheres[1].material.color = vec3(0.8, 0.3, 0.1);
-	scene.spheres[1].material.intensity = 150.0;
+	scene.spheres[1].material.intensity = vec3(0.8, 0.3, 0.1);
+	scene.spheres[1].material.emissiveness = 150.0;
 #endif
 	scene.spheres[1].material.diffuse = vec3(0.0);
 	scene.spheres[1].material.specular = vec3(0.0);
@@ -584,8 +703,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
 	scene.spheres[2].material.isLightSource = false;
-	scene.spheres[2].material.color = vec3(0.0);
-	scene.spheres[2].material.intensity = 0.0;
+	scene.spheres[2].material.intensity = vec3(0.0);
+	scene.spheres[2].material.emissiveness = 0.0;
 #endif  
 	scene.spheres[2].material.diffuse = vec3(0.2, 0.5, 0.8);
 	scene.spheres[2].material.specular = vec3(0.8);
@@ -600,8 +719,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT  
 	scene.spheres[3].material.isLightSource = false;
-	scene.spheres[3].material.color = vec3(0.0);
-	scene.spheres[3].material.intensity = 0.0;
+	scene.spheres[3].material.intensity = vec3(0.0);
+	scene.spheres[3].material.emissiveness = 0.0;
 #endif  
 	scene.spheres[3].material.diffuse = vec3(0.9, 0.8, 0.8);
 	scene.spheres[3].material.specular = vec3(1.0);
@@ -616,8 +735,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT   
 	scene.planes[0].material.isLightSource = false;
-	scene.planes[0].material.color = vec3(0.0);
-	scene.planes[0].material.intensity = 0.0; 
+	scene.planes[0].material.intensity = vec3(0.0);
+	scene.planes[0].material.emissiveness = 0.0; 
 #endif
 	scene.planes[0].material.diffuse = vec3(0.8);
 	scene.planes[0].material.specular = vec3(0);
@@ -628,8 +747,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
 	scene.planes[1].material.isLightSource = false;
-	scene.planes[1].material.color = vec3(0.0);
-	scene.planes[1].material.intensity = 0.0;
+	scene.planes[1].material.intensity = vec3(0.0);
+	scene.planes[1].material.emissiveness = 0.0;
 #endif
 	scene.planes[1].material.diffuse = vec3(0.9, 0.6, 0.3);
 	scene.planes[1].material.specular = vec3(0.02);
@@ -640,8 +759,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
 	scene.planes[2].material.isLightSource = false;
-	scene.planes[2].material.color = vec3(0.0);
-	scene.planes[2].material.intensity = 0.0;
+	scene.planes[2].material.intensity = vec3(0.0);
+	scene.planes[2].material.emissiveness = 0.0;
 #endif
 	
 	scene.planes[2].material.diffuse = vec3(0.2);
@@ -653,8 +772,8 @@ void loadScene1(inout Scene scene) {
 	// Set the value of the missing property in the ifdef below 
 #ifdef SOLUTION_LIGHT    
 	scene.planes[3].material.isLightSource = false;
-	scene.planes[3].material.color = vec3(0.0);
-	scene.planes[3].material.intensity = 0.0;
+	scene.planes[3].material.intensity = vec3(0.0);
+	scene.planes[3].material.emissiveness = 0.0;
 #endif
 	
 	scene.planes[3].material.diffuse = vec3(0.2);
